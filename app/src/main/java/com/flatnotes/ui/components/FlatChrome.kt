@@ -28,7 +28,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -50,6 +52,8 @@ fun FlatText(
     color: Color = FlatPalette.TextPrimary,
     fontSize: TextUnit = 16.sp,
     fontWeight: FontWeight = FontWeight.Normal,
+    fontFamily: FontFamily = FontFamily.Default,
+    textAlign: TextAlign = TextAlign.Unspecified,
     lineHeight: TextUnit = TextUnit.Unspecified,
     maxLines: Int = Int.MAX_VALUE,
 ) {
@@ -60,6 +64,8 @@ fun FlatText(
             color = color,
             fontSize = fontSize,
             fontWeight = fontWeight,
+            fontFamily = fontFamily,
+            textAlign = textAlign,
             lineHeight = lineHeight,
         ),
         maxLines = maxLines,
