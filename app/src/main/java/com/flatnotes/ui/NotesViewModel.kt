@@ -18,6 +18,7 @@ import com.flatnotes.data.NoteTint
 import com.flatnotes.data.NotesLayout
 import com.flatnotes.data.isContentBlank
 import com.flatnotes.data.sampleNotes
+import com.flatnotes.domain.EditorSpacing
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -30,6 +31,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val main = Handler(Looper.getMainLooper())
 
     var layout by mutableStateOf(readLayout())
+        private set
+
+    var spacing by mutableStateOf(readSpacing())
         private set
 
     var notes by mutableStateOf<List<Note>>(emptyList())
@@ -57,6 +61,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun updateLayout(value: NotesLayout) {
         layout = value
         prefs.edit().putString(KEY_LAYOUT, value.name).apply()
+    }
+
+    fun updateSpacing(value: EditorSpacing) {
+        val next = value.clamped()
+        spacing = next
+        prefs.edit()
+            .putInt(KEY_SPACING_BODY, next.body)
+            .putInt(KEY_SPACING_CHECKLIST, next.checklist)
+            .putInt(KEY_SPACING_BLOCK, next.block)
+            .apply()
     }
 
     fun note(id: String): Note? = notes.find { it.id == id }
@@ -152,9 +166,20 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             .getOrDefault(NotesLayout.List)
     }
 
+    private fun readSpacing(): EditorSpacing {
+        return EditorSpacing(
+            body = prefs.getInt(KEY_SPACING_BODY, EditorSpacing.BODY_DEFAULT),
+            checklist = prefs.getInt(KEY_SPACING_CHECKLIST, EditorSpacing.CHECKLIST_DEFAULT),
+            block = prefs.getInt(KEY_SPACING_BLOCK, EditorSpacing.BLOCK_DEFAULT),
+        ).clamped()
+    }
+
     private companion object {
         const val PREFS = "flat_notes"
         const val KEY_LAYOUT = "notes_layout"
         const val KEY_SEEDED = "notes_seeded"
+        const val KEY_SPACING_BODY = "spacing_body"
+        const val KEY_SPACING_CHECKLIST = "spacing_checklist"
+        const val KEY_SPACING_BLOCK = "spacing_block"
     }
 }
