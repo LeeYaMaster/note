@@ -1,0 +1,23 @@
+*.iml
+.gradle/
+.idea/
+.DS_Store
+local.properties
+/build
+build/
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.ap_
+*.dex
+output.json
+
+# Android Studio
+.navigation/
+*.hprof
+
+# Keystores
+*.jks
+*.keystore
