@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -94,7 +95,7 @@ internal fun NoteFont.label(): String = when (this) {
 
 private val BlockFontSize = 16.sp
 private val BlockLineHeight = 24.sp
-private val BlockGap = 16.dp
+private val BlockGap = 22.dp
 
 @Composable
 fun EditorBody(
@@ -122,11 +123,10 @@ fun EditorBody(
             is NoteBlock.Checklist, is NoteBlock.Image, is NoteBlock.Doodle -> false
         }
     }
-    val checklistItemGap = with(LocalDensity.current) { (BlockLineHeight * 0.5f).toDp() }
     Column(Modifier.fillMaxWidth()) {
         blocks.forEachIndexed { index, block ->
             if (index > 0) {
-                Spacer(Modifier.height(gapBetween(blocks[index - 1], block, checklistItemGap)))
+                Spacer(Modifier.height(gapBetween(blocks[index - 1], block)))
             }
             when (block) {
                 is NoteBlock.Text -> TextBlockField(
@@ -151,6 +151,7 @@ fun EditorBody(
                     onToggle = { onToggle(block.id) },
                 )
                 is NoteBlock.Image -> MediaBlock(
+                    softFrame = false,
                     file = mediaFile(block.fileName),
                     scale = block.scale,
                     caption = block.caption,
@@ -166,6 +167,7 @@ fun EditorBody(
                     onDelete = { onRemoveMedia(block) },
                 )
                 is NoteBlock.Doodle -> MediaBlock(
+                    softFrame = true,
                     file = mediaFile(block.fileName),
                     scale = block.scale,
                     caption = block.caption,
@@ -211,6 +213,7 @@ private fun TextBlockField(
         onValueChange = onTextChange,
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = with(LocalDensity.current) { BlockLineHeight.toDp() })
             .focusRequester(focusRequester)
             .onFocusChanged { if (it.isFocused) onFocus() }
             .onPreviewKeyEvent { event ->
@@ -272,6 +275,7 @@ private fun ChecklistBlockField(
             onValueChange = onTextChange,
             modifier = Modifier
                 .weight(1f)
+                .heightIn(min = line)
                 .focusRequester(focusRequester)
                 .onFocusChanged { if (it.isFocused) onFocus() }
                 .onPreviewKeyEvent { event ->
@@ -334,6 +338,7 @@ private fun ChecklistMark(done: Boolean) {
 
 @Composable
 private fun MediaBlock(
+    softFrame: Boolean,
     file: File,
     scale: Float,
     caption: String,
@@ -363,6 +368,7 @@ private fun MediaBlock(
         horizontalAlignment = if (alignStart) Alignment.Start else Alignment.CenterHorizontally,
     ) {
         MediaFrame(
+            softFrame = softFrame,
             bitmap = bitmap,
             failed = failed,
             fraction = fraction,
@@ -385,11 +391,11 @@ private fun MediaBlock(
                 text = caption,
                 modifier = Modifier
                     .fillMaxWidth(fraction)
-                    .padding(top = 4.dp),
+                    .padding(top = 8.dp),
                 style = TextStyle(
                     color = FlatPalette.TextSecondary,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
                     textAlign = if (alignStart) TextAlign.Start else TextAlign.Center,
                 ),
             )
@@ -399,6 +405,7 @@ private fun MediaBlock(
 
 @Composable
 private fun MediaFrame(
+    softFrame: Boolean,
     bitmap: Bitmap?,
     failed: Boolean,
     fraction: Float,
@@ -421,7 +428,11 @@ private fun MediaFrame(
         val frame = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .border(1.dp, FlatPalette.Divider, shape)
+            .border(
+                width = 1.dp,
+                color = if (softFrame) FlatPalette.Divider.copy(alpha = 0.45f) else FlatPalette.Divider,
+                shape = shape,
+            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -567,15 +578,10 @@ private fun androidx.compose.foundation.layout.RowScope.ActionLabel(
     }
 }
 
-private fun gapBetween(previous: NoteBlock, current: NoteBlock, checklistItemGap: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp {
-    val previousMedia = previous is NoteBlock.Image || previous is NoteBlock.Doodle
-    val currentMedia = current is NoteBlock.Image || current is NoteBlock.Doodle
-    return when {
-        previous is NoteBlock.Checklist && current is NoteBlock.Checklist -> checklistItemGap
-        previousMedia || currentMedia -> BlockGap
-        previous is NoteBlock.Checklist || current is NoteBlock.Checklist -> BlockGap
-        else -> 0.dp
-    }
+private fun gapBetween(previous: NoteBlock, current: NoteBlock): androidx.compose.ui.unit.Dp {
+    val sameText = previous is NoteBlock.Text && current is NoteBlock.Text
+    val sameChecklist = previous is NoteBlock.Checklist && current is NoteBlock.Checklist
+    return if (sameText || sameChecklist) 0.dp else BlockGap
 }
 
 private fun blockTextStyle(align: ParagraphAlign, font: NoteFont, done: Boolean): TextStyle {
