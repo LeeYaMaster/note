@@ -96,6 +96,8 @@ internal fun NoteFont.label(): String = when (this) {
 private val BlockFontSize = 16.sp
 private val BlockLineHeight = 24.sp
 private val BlockGap = 22.dp
+private val CheckSize = 22.dp
+private val CheckTap = 44.dp
 
 @Composable
 fun EditorBody(
@@ -253,13 +255,16 @@ private fun ChecklistBlockField(
     onToggle: () -> Unit,
 ) {
     val line = with(LocalDensity.current) { BlockLineHeight.toDp() }
+    val row = maxOf(line, CheckTap)
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = row),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(line)
+                .size(row)
                 .semantics { contentDescription = if (done) "已完成" else "未完成" }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -275,7 +280,7 @@ private fun ChecklistBlockField(
             onValueChange = onTextChange,
             modifier = Modifier
                 .weight(1f)
-                .heightIn(min = line)
+                .heightIn(min = row)
                 .focusRequester(focusRequester)
                 .onFocusChanged { if (it.isFocused) onFocus() }
                 .onPreviewKeyEvent { event ->
@@ -297,12 +302,12 @@ private fun ChecklistBlockField(
 
 @Composable
 private fun ChecklistMark(done: Boolean) {
-    Canvas(Modifier.size(14.dp)) {
-        val stroke = 1.4.dp.toPx()
+    Canvas(Modifier.size(CheckSize)) {
+        val stroke = 1.7.dp.toPx()
         val inset = stroke / 2f
         val side = size.minDimension - inset * 2
         val topLeft = Offset(inset, inset)
-        val corner = CornerRadius(3.dp.toPx())
+        val corner = CornerRadius(4.dp.toPx())
         if (done) {
             drawRoundRect(
                 color = CheckGreen,
