@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -96,8 +97,8 @@ internal fun NoteFont.label(): String = when (this) {
 private val BlockFontSize = 16.sp
 private val BlockLineHeight = 24.sp
 private val BlockGap = 22.dp
-private val CheckSize = 22.dp
-private val CheckTap = 44.dp
+private val CheckSize = 18.dp
+private val CheckTap = 40.dp
 
 @Composable
 fun EditorBody(
@@ -255,32 +256,36 @@ private fun ChecklistBlockField(
     onToggle: () -> Unit,
 ) {
     val line = with(LocalDensity.current) { BlockLineHeight.toDp() }
-    val row = maxOf(line, CheckTap)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = row),
+            .heightIn(min = line),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier
-                .size(row)
-                .semantics { contentDescription = if (done) "已完成" else "未完成" }
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onToggle,
-                ),
+            modifier = Modifier.size(width = CheckSize + 8.dp, height = line),
             contentAlignment = Alignment.Center,
         ) {
-            ChecklistMark(done)
+            Box(
+                modifier = Modifier
+                    .requiredSize(CheckTap)
+                    .semantics { contentDescription = if (done) "已完成" else "未完成" }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onToggle,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                ChecklistMark(done)
+            }
         }
         BasicTextField(
             value = text,
             onValueChange = onTextChange,
             modifier = Modifier
                 .weight(1f)
-                .heightIn(min = row)
+                .heightIn(min = line)
                 .focusRequester(focusRequester)
                 .onFocusChanged { if (it.isFocused) onFocus() }
                 .onPreviewKeyEvent { event ->
@@ -307,7 +312,7 @@ private fun ChecklistMark(done: Boolean) {
         val inset = stroke / 2f
         val side = size.minDimension - inset * 2
         val topLeft = Offset(inset, inset)
-        val corner = CornerRadius(4.dp.toPx())
+        val corner = CornerRadius(3.5.dp.toPx())
         if (done) {
             drawRoundRect(
                 color = CheckGreen,
