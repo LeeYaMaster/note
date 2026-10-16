@@ -3,8 +3,11 @@ package com.flatnotes.ui.editor
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
@@ -15,20 +18,24 @@ import com.flatnotes.data.NoteFont
 import com.flatnotes.data.ParagraphAlign
 
 private const val POSTER_WIDTH = 1080
-private const val PADDING = 72f
+private const val FRAME_INSET = 40f
+private const val SIDE_PADDING = 72f
+private const val TOP_PADDING = 168f
+private const val BOTTOM_PADDING = 96f
+private const val CONTENT_X = FRAME_INSET + SIDE_PADDING
 private const val TEXT = 0xFF1A1A1A.toInt()
 private const val MUTED = 0xFF8E8E8E.toInt()
 private const val GREEN = 0xFF22A45A.toInt()
 
 fun renderNoteBitmap(note: Note, decode: (String) -> Bitmap?): Bitmap {
-    val contentWidth = POSTER_WIDTH - PADDING * 2
+    val contentWidth = POSTER_WIDTH - CONTENT_X * 2
     val borrowed = mutableListOf<Bitmap>()
     val pieces = mutableListOf<Piece>()
     val title = note.title.ifBlank { "无标题" }
     pieces += textPiece(
         text = title,
         width = contentWidth.toInt(),
-        textSize = 72f,
+        textSize = 108f,
         color = if (note.title.isBlank()) MUTED else TEXT,
         typeface = Typeface.DEFAULT_BOLD,
         align = ParagraphAlign.Start,
@@ -56,21 +63,20 @@ fun renderNoteBitmap(note: Note, decode: (String) -> Bitmap?): Bitmap {
             is NoteBlock.Doodle -> pieces += mediaPiece(block.fileName, block.scale, block.caption, contentWidth, decode, borrowed)
         }
     }
-    val gap = 28f
-    var height = PADDING
+    var height = FRAME_INSET + TOP_PADDING
     pieces.forEachIndexed { index, piece ->
         height += piece.height
-        if (index != pieces.lastIndex) height += gap
+        if (index != pieces.lastIndex) height += if (index == 0) 48f else 28f
     }
-    height += PADDING
-    val bitmap = Bitmap.createBitmap(POSTER_WIDTH, height.toInt().coerceIn(480, 16000), Bitmap.Config.ARGB_8888)
+    height += BOTTOM_PADDING + FRAME_INSET
+    val bitmap = Bitmap.createBitmap(POSTER_WIDTH, height.toInt().coerceIn(640, 16000), Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    canvas.drawColor(Color.WHITE)
-    var top = PADDING
+    drawBackdrop(canvas, POSTER_WIDTH, bitmap.height)
+    var top = FRAME_INSET + TOP_PADDING
     pieces.forEachIndexed { index, piece ->
         piece.draw(canvas, top)
         top += piece.height
-        if (index != pieces.lastIndex) top += gap
+        if (index != pieces.lastIndex) top += if (index == 0) 48f else 28f
     }
     borrowed.forEach { image ->
         if (!image.isRecycled) image.recycle()
@@ -102,6 +108,55 @@ fun shareNoteImage(context: android.content.Context, bitmap: Bitmap) {
     context.startActivity(chooser)
 }
 
+private fun drawBackdrop(canvas: Canvas, width: Int, height: Int) {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    paint.shader = LinearGradient(
+        0f,
+        0f,
+        0f,
+        height.toFloat(),
+        intArrayOf(0xFFFFF1C4.toInt(), 0xFFFFF7E8.toInt(), 0xFFF2F6FF.toInt()),
+        floatArrayOf(0f, 0.46f, 1f),
+        Shader.TileMode.CLAMP,
+    )
+    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+    paint.shader = null
+    paint.color = 0x66E4CF8C.toInt()
+    val step = 26f
+    var y = 14f
+    var row = 0
+    while (y < height) {
+        var x = if (row % 2 == 0) 12f else 25f
+        while (x < width) {
+            canvas.drawCircle(x, y, 1.7f, paint)
+            x += step
+        }
+        y += step
+        row += 1
+    }
+    val card = RectF(
+        FRAME_INSET,
+        FRAME_INSET,
+        width - FRAME_INSET,
+        height - FRAME_INSET,
+    )
+    paint.shader = LinearGradient(
+        0f,
+        card.top,
+        0f,
+        card.bottom,
+        0xFFFFF8EA.toInt(),
+        0xFFFFFDF9.toInt(),
+        Shader.TileMode.CLAMP,
+    )
+    canvas.drawRoundRect(card, 36f, 36f, paint)
+    paint.shader = null
+    paint.style = Paint.Style.STROKE
+    paint.strokeWidth = 3f
+    paint.color = 0xFFE6D7A6.toInt()
+    canvas.drawRoundRect(card, 36f, 36f, paint)
+}
+
 private class Piece(
     val height: Float,
     val draw: (Canvas, Float) -> Unit,
@@ -119,7 +174,7 @@ private fun textPiece(
     val layout = staticLayout(text, width, textSize, color, typeface, align, strike)
     return Piece(layout.height.toFloat()) { canvas, top ->
         canvas.save()
-        canvas.translate(PADDING, top)
+        canvas.translate(CONTENT_X, top)
         layout.draw(canvas)
         canvas.restore()
     }
@@ -141,7 +196,7 @@ private fun checklistPiece(block: NoteBlock.Checklist, contentWidth: Float): Pie
     val height = maxOf(box, layout.height.toFloat())
     return Piece(height) { canvas, top ->
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val left = PADDING
+        val left = CONTENT_X
         val topBox = top + (height - box) / 2f
         val radius = 8f
         if (block.done) {
@@ -174,7 +229,7 @@ private fun checklistPiece(block: NoteBlock.Checklist, contentWidth: Float): Pie
             )
         }
         canvas.save()
-        canvas.translate(PADDING + box + gap, top + (height - layout.height) / 2f)
+        canvas.translate(CONTENT_X + box + gap, top + (height - layout.height) / 2f)
         layout.draw(canvas)
         canvas.restore()
     }
@@ -204,7 +259,7 @@ private fun mediaPiece(
     val captionGap = if (captionLayout == null) 0f else 16f
     val height = imageHeight + captionGap + (captionLayout?.height?.toFloat() ?: 0f)
     return Piece(height) { canvas, top ->
-        val left = PADDING
+        val left = CONTENT_X
         if (image == null || image.isRecycled) {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = MUTED

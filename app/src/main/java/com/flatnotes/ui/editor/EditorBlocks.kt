@@ -122,7 +122,10 @@ fun EditorBody(
         }
     }
     Column(Modifier.fillMaxWidth()) {
-        blocks.forEach { block ->
+        blocks.forEachIndexed { index, block ->
+            if (index > 0 && (block is NoteBlock.Checklist || blocks[index - 1] is NoteBlock.Checklist)) {
+                Spacer(Modifier.height(12.dp))
+            }
             when (block) {
                 is NoteBlock.Text -> TextBlockField(
                     text = block.text,
@@ -245,13 +248,14 @@ private fun ChecklistBlockField(
     onToggle: () -> Unit,
 ) {
     val line = with(LocalDensity.current) { BlockLineHeight.toDp() }
+    val slot = maxOf(line, 30.dp)
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
     ) {
         Box(
             modifier = Modifier
-                .size(line)
+                .size(slot)
                 .semantics { contentDescription = if (done) "已完成" else "未完成" }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -288,12 +292,12 @@ private fun ChecklistBlockField(
 
 @Composable
 private fun ChecklistMark(done: Boolean) {
-    Canvas(Modifier.size(16.dp)) {
-        val stroke = 1.5.dp.toPx()
+    Canvas(Modifier.size(22.dp)) {
+        val stroke = 1.7.dp.toPx()
         val inset = stroke / 2f
         val side = size.minDimension - inset * 2
         val topLeft = Offset(inset, inset)
-        val corner = CornerRadius(3.dp.toPx())
+        val corner = CornerRadius(4.dp.toPx())
         if (done) {
             drawRoundRect(
                 color = CheckGreen,
