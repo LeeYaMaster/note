@@ -94,6 +94,7 @@ internal fun NoteFont.label(): String = when (this) {
 
 private val BlockFontSize = 16.sp
 private val BlockLineHeight = 24.sp
+private val BlockGap = 16.dp
 
 @Composable
 fun EditorBody(
@@ -121,10 +122,11 @@ fun EditorBody(
             is NoteBlock.Checklist, is NoteBlock.Image, is NoteBlock.Doodle -> false
         }
     }
+    val checklistItemGap = with(LocalDensity.current) { (BlockLineHeight * 0.5f).toDp() }
     Column(Modifier.fillMaxWidth()) {
         blocks.forEachIndexed { index, block ->
-            if (index > 0 && (block is NoteBlock.Checklist || blocks[index - 1] is NoteBlock.Checklist)) {
-                Spacer(Modifier.height(12.dp))
+            if (index > 0) {
+                Spacer(Modifier.height(gapBetween(blocks[index - 1], block, checklistItemGap)))
             }
             when (block) {
                 is NoteBlock.Text -> TextBlockField(
@@ -227,7 +229,7 @@ private fun TextBlockField(
         decorationBox = { inner ->
             Box {
                 if (text.isEmpty() && placeholder != null) {
-                    FlatText(text = placeholder, color = FlatPalette.Placeholder, fontSize = 16.sp)
+                    FlatText(text = placeholder, color = FlatPalette.Placeholder, fontSize = BlockFontSize)
                 }
                 inner()
             }
@@ -248,14 +250,13 @@ private fun ChecklistBlockField(
     onToggle: () -> Unit,
 ) {
     val line = with(LocalDensity.current) { BlockLineHeight.toDp() }
-    val slot = maxOf(line, 30.dp)
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
     ) {
         Box(
             modifier = Modifier
-                .size(slot)
+                .size(line)
                 .semantics { contentDescription = if (done) "已完成" else "未完成" }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -292,12 +293,12 @@ private fun ChecklistBlockField(
 
 @Composable
 private fun ChecklistMark(done: Boolean) {
-    Canvas(Modifier.size(22.dp)) {
-        val stroke = 1.7.dp.toPx()
+    Canvas(Modifier.size(14.dp)) {
+        val stroke = 1.4.dp.toPx()
         val inset = stroke / 2f
         val side = size.minDimension - inset * 2
         val topLeft = Offset(inset, inset)
-        val corner = CornerRadius(4.dp.toPx())
+        val corner = CornerRadius(3.dp.toPx())
         if (done) {
             drawRoundRect(
                 color = CheckGreen,
@@ -358,7 +359,6 @@ private fun MediaBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
             .zIndex(if (menuOpen) 1f else 0f),
         horizontalAlignment = if (alignStart) Alignment.Start else Alignment.CenterHorizontally,
     ) {
@@ -385,7 +385,7 @@ private fun MediaBlock(
                 text = caption,
                 modifier = Modifier
                     .fillMaxWidth(fraction)
-                    .padding(top = 6.dp),
+                    .padding(top = 4.dp),
                 style = TextStyle(
                     color = FlatPalette.TextSecondary,
                     fontSize = 13.sp,
@@ -564,6 +564,17 @@ private fun androidx.compose.foundation.layout.RowScope.ActionLabel(
         contentAlignment = Alignment.Center,
     ) {
         FlatText(text = label, color = tint, fontSize = 13.sp)
+    }
+}
+
+private fun gapBetween(previous: NoteBlock, current: NoteBlock, checklistItemGap: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp {
+    val previousMedia = previous is NoteBlock.Image || previous is NoteBlock.Doodle
+    val currentMedia = current is NoteBlock.Image || current is NoteBlock.Doodle
+    return when {
+        previous is NoteBlock.Checklist && current is NoteBlock.Checklist -> checklistItemGap
+        previousMedia || currentMedia -> BlockGap
+        previous is NoteBlock.Checklist || current is NoteBlock.Checklist -> BlockGap
+        else -> 0.dp
     }
 }
 
