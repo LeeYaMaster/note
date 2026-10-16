@@ -33,8 +33,8 @@ fun FlatNotesApp() {
             NotesRoute(
                 viewModel = viewModel,
                 onOpenNote = { id -> navController.navigate(Routes.editor(id)) },
-                onCreateNote = { kind ->
-                    val id = viewModel.create(kind)
+                onCreateNote = {
+                    val id = viewModel.create()
                     navController.navigate(Routes.editor(id))
                 },
             )

@@ -53,8 +53,3 @@ fun groupNotes(
         if (items.isEmpty()) null else NoteGroup(bucket, items)
     }
 }
-
-internal fun insertChecklistLine(body: String): String {
-    val separator = if (body.isEmpty() || body.endsWith("\n")) "" else "\n"
-    return body + separator + "☐ "
-}

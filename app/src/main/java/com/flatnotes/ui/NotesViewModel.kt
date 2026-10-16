@@ -2,19 +2,25 @@ package com.flatnotes.ui
 
 import android.app.Application
 import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.flatnotes.data.Note
-import com.flatnotes.data.NoteKind
+import com.flatnotes.data.NoteBlock
+import com.flatnotes.data.NoteFiles
 import com.flatnotes.data.NoteTint
 import com.flatnotes.data.NotesLayout
+import com.flatnotes.data.isContentBlank
 import com.flatnotes.data.sampleNotes
+import java.io.File
 import java.util.UUID
 
 class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val files = NoteFiles(application)
 
     var layout by mutableStateOf(readLayout())
         private set
@@ -29,46 +35,62 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun note(id: String): Note? = notes.find { it.id == id }
 
-    fun create(kind: NoteKind): String {
+    fun create(): String {
         val id = UUID.randomUUID().toString()
         val tint = NoteTint.entries[notes.size % NoteTint.entries.size]
         notes = listOf(
             Note(
                 id = id,
                 title = "",
-                body = "",
+                blocks = listOf(NoteBlock.Text(id = UUID.randomUUID().toString(), text = "")),
                 updatedAt = System.currentTimeMillis(),
                 tint = tint,
-                kind = kind,
             ),
         ) + notes
         return id
     }
 
-    fun update(id: String, title: String, body: String) {
+    fun updateTitle(id: String, title: String) {
         notes = notes.map { note ->
-            if (note.id != id) {
-                note
+            if (note.id == id) note.copy(title = title, updatedAt = System.currentTimeMillis()) else note
+        }
+    }
+
+    fun updateBlocks(id: String, blocks: List<NoteBlock>) {
+        notes = notes.map { note ->
+            if (note.id == id) {
+                note.copy(blocks = blocks, preview = "", updatedAt = System.currentTimeMillis())
             } else {
-                note.copy(
-                    title = title,
-                    body = body,
-                    preview = if (body == note.body) note.preview else "",
-                    updatedAt = System.currentTimeMillis(),
-                )
+                note
             }
         }
     }
 
+    fun mediaFile(noteId: String, name: String): File = files.file(noteId, name)
+
+    fun decode(file: File): Bitmap? = files.decodePreview(file)
+
+    fun importImage(noteId: String, uri: Uri): String? = files.importImage(noteId, uri)
+
+    fun saveDoodle(noteId: String, bitmap: Bitmap): String = files.savePng(noteId, bitmap)
+
+    fun deleteMedia(noteId: String, name: String) {
+        files.deleteFile(noteId, name)
+    }
+
     fun delete(id: String) {
-        notes = notes.filterNot { it.id == id }
+        deleteAll(setOf(id))
+    }
+
+    fun deleteAll(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        notes = notes.filterNot { it.id in ids }
+        ids.forEach { files.deleteNote(it) }
     }
 
     fun discardIfBlank(id: String) {
         val current = note(id) ?: return
-        if (current.title.isBlank() && current.body.isBlank()) {
-            delete(id)
-        }
+        if (current.isContentBlank()) delete(id)
     }
 
     private fun readLayout(): NotesLayout {

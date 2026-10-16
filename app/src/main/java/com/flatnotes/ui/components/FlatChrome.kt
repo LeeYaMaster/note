@@ -3,10 +3,12 @@ package com.flatnotes.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -201,4 +203,52 @@ fun FlatTextButton(
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     )
+}
+
+@Composable
+fun FlatConfirmDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    confirmColor: Color = FlatPalette.Destructive,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(FlatPalette.Scrim)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 40.dp)
+                .fillMaxWidth()
+                .border(1.dp, FlatPalette.Divider, RoundedCornerShape(FlatDimens.Radius))
+                .background(FlatPalette.Background, RoundedCornerShape(FlatDimens.Radius))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                )
+                .padding(20.dp),
+        ) {
+            FlatText(text = title, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            FlatText(text = message, color = FlatPalette.TextSecondary, fontSize = 14.sp)
+            Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                FlatTextButton(text = "取消", onClick = onDismiss, color = FlatPalette.TextSecondary)
+                FlatTextButton(text = confirmLabel, onClick = onConfirm, color = confirmColor)
+            }
+        }
+    }
 }

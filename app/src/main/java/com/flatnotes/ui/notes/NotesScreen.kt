@@ -1,30 +1,35 @@
+@file:OptIn(ExperimentalFoundationApi::class)
+
 package com.flatnotes.ui.notes
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -39,20 +44,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.flatnotes.data.Note
-import com.flatnotes.data.NoteKind
 import com.flatnotes.data.NotesLayout
 import com.flatnotes.data.displayPreview
+import com.flatnotes.data.plainText
 import com.flatnotes.data.sampleNotes
 import com.flatnotes.domain.formatNoteTime
 import com.flatnotes.domain.groupNotes
 import com.flatnotes.ui.NotesViewModel
+import com.flatnotes.ui.components.FlatConfirmDialog
 import com.flatnotes.ui.components.FlatFab
 import com.flatnotes.ui.components.FlatIconButton
 import com.flatnotes.ui.components.FlatMenu
@@ -61,21 +70,17 @@ import com.flatnotes.ui.components.FlatText
 import com.flatnotes.ui.components.FlatTextButton
 import com.flatnotes.ui.components.Hairline
 import com.flatnotes.ui.icons.AppIcon
+import com.flatnotes.ui.icons.FlatIcon
 import com.flatnotes.ui.theme.FlatDimens
 import com.flatnotes.ui.theme.FlatPalette
 import com.flatnotes.ui.theme.FlatTheme
 import com.flatnotes.ui.theme.toStyle
 
-private enum class HomeTab(val label: String) {
-    Notes("笔记"),
-    Todos("待办"),
-}
-
 @Composable
 fun NotesRoute(
     viewModel: NotesViewModel,
     onOpenNote: (String) -> Unit,
-    onCreateNote: (NoteKind) -> Unit,
+    onCreateNote: () -> Unit,
 ) {
     NotesScreen(
         notes = viewModel.notes,
@@ -83,6 +88,7 @@ fun NotesRoute(
         onLayoutChange = viewModel::updateLayout,
         onOpenNote = onOpenNote,
         onCreateNote = onCreateNote,
+        onDeleteNotes = viewModel::deleteAll,
     )
 }
 
@@ -92,18 +98,38 @@ fun NotesScreen(
     layout: NotesLayout,
     onLayoutChange: (NotesLayout) -> Unit,
     onOpenNote: (String) -> Unit,
-    onCreateNote: (NoteKind) -> Unit,
+    onCreateNote: () -> Unit,
+    onDeleteNotes: (Set<String>) -> Unit,
 ) {
-    var tab by remember { mutableStateOf(HomeTab.Notes) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var menuOpen by remember { mutableStateOf(false) }
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val nowMillis = System.currentTimeMillis()
-    val visible = filterNotes(notes, tab, query)
+    val visible = filterNotes(notes, query)
 
-    BackHandler(enabled = searching) {
+    BackHandler(enabled = selecting || searching) {
+        when {
+            selecting -> {
+                selecting = false
+                selected = emptySet()
+                confirmDelete = false
+            }
+            searching -> {
+                searching = false
+                query = ""
+            }
+        }
+    }
+
+    fun openSelection(id: String) {
         searching = false
         query = ""
+        menuOpen = false
+        selecting = true
+        selected = selected + id
     }
 
     Box(
@@ -116,8 +142,16 @@ fun NotesScreen(
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)),
         ) {
-            if (searching) {
-                SearchBar(
+            when {
+                selecting -> SelectionBar(
+                    count = selected.size,
+                    onClose = {
+                        selecting = false
+                        selected = emptySet()
+                    },
+                    onDelete = { if (selected.isNotEmpty()) confirmDelete = true },
+                )
+                searching -> SearchBar(
                     query = query,
                     onQueryChange = { query = it },
                     onClose = {
@@ -125,8 +159,7 @@ fun NotesScreen(
                         query = ""
                     },
                 )
-            } else {
-                TitleBar(
+                else -> TitleBar(
                     menuOpen = menuOpen,
                     layout = layout,
                     onSearch = { searching = true },
@@ -136,33 +169,62 @@ fun NotesScreen(
                 )
             }
             Hairline()
-            TabRow(selected = tab, onSelect = { tab = it })
-            Hairline()
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (visible.isEmpty()) {
-                    EmptyHint(message = emptyMessage(tab, query))
+                    EmptyHint(message = if (query.isNotBlank()) "没有找到相关内容" else "暂无笔记")
                 } else when (layout) {
                     NotesLayout.List -> NotesList(
                         notes = visible,
                         nowMillis = nowMillis,
-                        onOpenNote = onOpenNote,
+                        selecting = selecting,
+                        selected = selected,
+                        onClick = { id ->
+                            if (selecting) {
+                                selected = if (id in selected) selected - id else selected + id
+                            } else {
+                                onOpenNote(id)
+                            }
+                        },
+                        onLongClick = ::openSelection,
                     )
                     NotesLayout.Waterfall -> NotesWaterfall(
                         notes = visible,
                         nowMillis = nowMillis,
-                        onOpenNote = onOpenNote,
+                        selecting = selecting,
+                        selected = selected,
+                        onClick = { id ->
+                            if (selecting) {
+                                selected = if (id in selected) selected - id else selected + id
+                            } else {
+                                onOpenNote(id)
+                            }
+                        },
+                        onLongClick = ::openSelection,
                     )
                 }
-                FlatFab(
-                    onClick = {
-                        val kind = if (tab == HomeTab.Todos) NoteKind.Todo else NoteKind.Note
-                        onCreateNote(kind)
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 20.dp, bottom = 20.dp),
-                )
+                if (!selecting) {
+                    FlatFab(
+                        onClick = onCreateNote,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 20.dp, bottom = 20.dp),
+                    )
+                }
             }
+        }
+        if (confirmDelete) {
+            FlatConfirmDialog(
+                title = if (selected.size == 1) "删除这条笔记？" else "删除 ${selected.size} 条笔记？",
+                message = "删除后无法恢复。",
+                confirmLabel = "删除",
+                onDismiss = { confirmDelete = false },
+                onConfirm = {
+                    onDeleteNotes(selected)
+                    confirmDelete = false
+                    selecting = false
+                    selected = emptySet()
+                },
+            )
         }
     }
 }
@@ -212,6 +274,33 @@ private fun TitleBar(
 }
 
 @Composable
+private fun SelectionBar(
+    count: Int,
+    onClose: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FlatTextButton(text = "取消", onClick = onClose, color = FlatPalette.TextSecondary)
+        FlatText(
+            text = "已选择 $count",
+            modifier = Modifier.weight(1f),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        FlatTextButton(
+            text = "删除",
+            onClick = onDelete,
+            color = if (count == 0) FlatPalette.Placeholder else FlatPalette.Destructive,
+        )
+    }
+}
+
+@Composable
 private fun SearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
@@ -251,45 +340,13 @@ private fun SearchBar(
 }
 
 @Composable
-private fun TabRow(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        HomeTab.entries.forEachIndexed { index, tab ->
-            if (index > 0) Spacer(Modifier.width(28.dp))
-            Column(
-                modifier = Modifier
-                    .clickable { onSelect(tab) }
-                    .padding(top = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                val active = tab == selected
-                FlatText(
-                    text = tab.label,
-                    color = if (active) FlatPalette.TextPrimary else FlatPalette.TabInactive,
-                    fontSize = 16.sp,
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                )
-                Box(
-                    Modifier
-                        .padding(top = 8.dp)
-                        .height(3.dp)
-                        .fillMaxWidth()
-                        .background(if (active) FlatPalette.Accent else FlatPalette.Background),
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun NotesList(
     notes: List<Note>,
     nowMillis: Long,
-    onOpenNote: (String) -> Unit,
+    selecting: Boolean,
+    selected: Set<String>,
+    onClick: (String) -> Unit,
+    onLongClick: (String) -> Unit,
 ) {
     val groups = groupNotes(notes, nowMillis)
     LazyColumn(
@@ -307,7 +364,14 @@ private fun NotesList(
             }
             items(group.notes, key = { it.id }) { note ->
                 Column {
-                    NoteRow(note = note, nowMillis = nowMillis, onClick = { onOpenNote(note.id) })
+                    NoteRow(
+                        note = note,
+                        nowMillis = nowMillis,
+                        selecting = selecting,
+                        selected = note.id in selected,
+                        onClick = { onClick(note.id) },
+                        onLongClick = { onLongClick(note.id) },
+                    )
                     Hairline()
                 }
             }
@@ -316,38 +380,53 @@ private fun NotesList(
 }
 
 @Composable
-private fun NoteRow(note: Note, nowMillis: Long, onClick: () -> Unit) {
-    Column(
+private fun NoteRow(
+    note: Note,
+    nowMillis: Long,
+    selecting: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .background(if (selected) Color(0xFFFFF6D8) else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            FlatText(
-                text = note.title.ifBlank { "无标题" },
-                modifier = Modifier.weight(1f),
-                color = if (note.title.isBlank()) FlatPalette.Placeholder else FlatPalette.TextPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
+        if (selecting) {
+            SelectionMark(selected)
             Spacer(Modifier.width(12.dp))
-            FlatText(
-                text = formatNoteTime(note.updatedAt, nowMillis),
-                color = FlatPalette.TextSecondary,
-                fontSize = 13.sp,
-            )
         }
-        val preview = note.displayPreview()
-        if (preview.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            FlatText(
-                text = preview,
-                color = FlatPalette.TextSecondary,
-                fontSize = 14.sp,
-                maxLines = 1,
-            )
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FlatText(
+                    text = note.title.ifBlank { "无标题" },
+                    modifier = Modifier.weight(1f),
+                    color = if (note.title.isBlank()) FlatPalette.Placeholder else FlatPalette.TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.width(12.dp))
+                FlatText(
+                    text = formatNoteTime(note.updatedAt, nowMillis),
+                    color = FlatPalette.TextSecondary,
+                    fontSize = 13.sp,
+                )
+            }
+            val preview = note.displayPreview()
+            if (preview.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                FlatText(
+                    text = preview,
+                    color = FlatPalette.TextSecondary,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
@@ -356,7 +435,10 @@ private fun NoteRow(note: Note, nowMillis: Long, onClick: () -> Unit) {
 private fun NotesWaterfall(
     notes: List<Note>,
     nowMillis: Long,
-    onOpenNote: (String) -> Unit,
+    selecting: Boolean,
+    selected: Set<String>,
+    onClick: (String) -> Unit,
+    onLongClick: (String) -> Unit,
 ) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(2),
@@ -371,49 +453,102 @@ private fun NotesWaterfall(
         verticalItemSpacing = FlatDimens.GridGap,
     ) {
         items(notes, key = { it.id }) { note ->
-            WaterfallCard(note = note, nowMillis = nowMillis, onClick = { onOpenNote(note.id) })
+            WaterfallCard(
+                note = note,
+                nowMillis = nowMillis,
+                selecting = selecting,
+                selected = note.id in selected,
+                onClick = { onClick(note.id) },
+                onLongClick = { onLongClick(note.id) },
+            )
         }
     }
 }
 
 @Composable
-private fun WaterfallCard(note: Note, nowMillis: Long, onClick: () -> Unit) {
+private fun WaterfallCard(
+    note: Note,
+    nowMillis: Long,
+    selecting: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val tint = note.tint.toStyle()
     val shape = RoundedCornerShape(FlatDimens.Radius)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .border(1.dp, tint.border, shape)
-            .background(tint.background)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-    ) {
-        FlatText(
-            text = note.title.ifBlank { "无标题" },
-            color = if (note.title.isBlank()) FlatPalette.Placeholder else FlatPalette.TextPrimary,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-        )
-        val preview = note.displayPreview()
-        if (preview.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
+    Box {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .border(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = if (selected) FlatPalette.Accent else tint.border,
+                    shape = shape,
+                )
+                .background(tint.background)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+        ) {
             FlatText(
-                text = preview,
+                text = note.title.ifBlank { "无标题" },
+                color = if (note.title.isBlank()) FlatPalette.Placeholder else FlatPalette.TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+            )
+            val preview = note.displayPreview()
+            if (preview.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                FlatText(
+                    text = preview,
+                    color = FlatPalette.TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    maxLines = 3,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            FlatText(
+                text = formatNoteTime(note.updatedAt, nowMillis),
+                modifier = Modifier.align(Alignment.End),
                 color = FlatPalette.TextSecondary,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                maxLines = 3,
+                fontSize = 12.sp,
             )
         }
-        Spacer(Modifier.height(10.dp))
-        FlatText(
-            text = formatNoteTime(note.updatedAt, nowMillis),
-            modifier = Modifier.align(Alignment.End),
-            color = FlatPalette.TextSecondary,
-            fontSize = 12.sp,
-        )
+        if (selecting) {
+            SelectionMark(
+                selected = selected,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectionMark(selected: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(22.dp)
+            .semantics { contentDescription = if (selected) "已选择" else "未选择" }
+            .border(
+                width = 1.5.dp,
+                color = if (selected) FlatPalette.Accent else FlatPalette.TextSecondary,
+                shape = CircleShape,
+            )
+            .background(if (selected) FlatPalette.Accent else Color.White, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) {
+            FlatIcon(
+                icon = AppIcon.Check,
+                tint = Color.White,
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp,
+            )
+        }
     }
 }
 
@@ -424,23 +559,14 @@ private fun EmptyHint(message: String) {
     }
 }
 
-private fun filterNotes(notes: List<Note>, tab: HomeTab, query: String): List<Note> {
-    val byTab = when (tab) {
-        HomeTab.Notes -> notes
-        HomeTab.Todos -> notes.filter { it.kind == NoteKind.Todo }
-    }
+private fun filterNotes(notes: List<Note>, query: String): List<Note> {
     val keyword = query.trim()
-    if (keyword.isEmpty()) return byTab
-    return byTab.filter { note ->
+    if (keyword.isEmpty()) return notes
+    return notes.filter { note ->
         note.title.contains(keyword, ignoreCase = true) ||
             note.displayPreview().contains(keyword, ignoreCase = true) ||
-            note.body.contains(keyword, ignoreCase = true)
+            note.plainText().contains(keyword, ignoreCase = true)
     }
-}
-
-private fun emptyMessage(tab: HomeTab, query: String): String {
-    if (query.isNotBlank()) return "没有找到相关内容"
-    return if (tab == HomeTab.Todos) "暂无待办" else "暂无笔记"
 }
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 780)
@@ -453,6 +579,7 @@ private fun NotesListPreview() {
             onLayoutChange = {},
             onOpenNote = {},
             onCreateNote = {},
+            onDeleteNotes = {},
         )
     }
 }
@@ -467,6 +594,7 @@ private fun NotesWaterfallPreview() {
             onLayoutChange = {},
             onOpenNote = {},
             onCreateNote = {},
+            onDeleteNotes = {},
         )
     }
 }

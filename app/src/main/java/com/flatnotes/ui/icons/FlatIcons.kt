@@ -23,9 +23,11 @@ enum class AppIcon {
     Add,
     Checklist,
     Image,
-    Mic,
     Pencil,
     Check,
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
 }
 
 @Composable
@@ -167,37 +169,24 @@ fun FlatIcon(
                 drawPath(mountain, tint, style = stroke)
             }
 
-            AppIcon.Mic -> {
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(9.dp.toPx(), 3.dp.toPx()),
-                    size = Size(6.dp.toPx(), 10.dp.toPx()),
-                    cornerRadius = CornerRadius(3.dp.toPx()),
-                    style = stroke,
-                )
-                drawArc(
-                    color = tint,
-                    startAngle = 0f,
-                    sweepAngle = 180f,
-                    useCenter = false,
-                    topLeft = Offset(6.4.dp.toPx(), 8.6.dp.toPx()),
-                    size = Size(11.2.dp.toPx(), 8.4.dp.toPx()),
-                    style = stroke,
-                )
-                drawLine(
-                    tint,
-                    Offset(12.dp.toPx(), 17.dp.toPx()),
-                    Offset(12.dp.toPx(), 20.2.dp.toPx()),
-                    stroke.width,
-                    StrokeCap.Round,
-                )
-                drawLine(
-                    tint,
-                    Offset(8.4.dp.toPx(), 20.2.dp.toPx()),
-                    Offset(15.6.dp.toPx(), 20.2.dp.toPx()),
-                    stroke.width,
-                    StrokeCap.Round,
-                )
+            AppIcon.AlignLeft -> {
+                val start = 4.dp.toPx()
+                drawLine(tint, Offset(start, 7.dp.toPx()), Offset(16.dp.toPx(), 7.dp.toPx()), stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(start, 12.dp.toPx()), Offset(20.dp.toPx(), 12.dp.toPx()), stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(start, 17.dp.toPx()), Offset(12.dp.toPx(), 17.dp.toPx()), stroke.width, StrokeCap.Round)
+            }
+
+            AppIcon.AlignCenter -> {
+                drawLine(tint, Offset(6.dp.toPx(), 7.dp.toPx()), Offset(18.dp.toPx(), 7.dp.toPx()), stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(4.dp.toPx(), 12.dp.toPx()), Offset(20.dp.toPx(), 12.dp.toPx()), stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(8.dp.toPx(), 17.dp.toPx()), Offset(16.dp.toPx(), 17.dp.toPx()), stroke.width, StrokeCap.Round)
+            }
+
+            AppIcon.AlignRight -> {
+                val end = 20.dp.toPx()
+                drawLine(tint, Offset(8.dp.toPx(), 7.dp.toPx()), Offset(end, 7.dp.toPx()), stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(4.dp.toPx(), 12.dp.toPx()), Offset(end, 12.dp.toPx()), stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(12.dp.toPx(), 17.dp.toPx()), Offset(end, 17.dp.toPx()), stroke.width, StrokeCap.Round)
             }
 
             AppIcon.Pencil -> {

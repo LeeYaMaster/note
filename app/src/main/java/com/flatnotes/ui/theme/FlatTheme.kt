@@ -26,7 +26,6 @@ object FlatPalette {
     val Background = Color(0xFFFFFFFF)
     val TextPrimary = Color(0xFF1A1A1A)
     val TextSecondary = Color(0xFF8E8E8E)
-    val TabInactive = Color(0xFFBDBDBD)
     val Placeholder = Color(0xFFC5C5C5)
     val Divider = Color(0xFFEEEEEE)
     val Accent = Color(0xFFFFC107)

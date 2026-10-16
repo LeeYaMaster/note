@@ -1,9 +1,11 @@
 package com.flatnotes.domain
 
 import com.flatnotes.data.Note
-import com.flatnotes.data.NoteKind
+import com.flatnotes.data.NoteBlock
 import com.flatnotes.data.NoteTint
 import com.flatnotes.data.displayPreview
+import com.flatnotes.data.isContentBlank
+import com.flatnotes.data.plainText
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate
@@ -55,20 +57,42 @@ class NoteTimeTest {
     }
 
     @Test
-    fun previewFallsBackToFirstBodyLine() {
-        val explicit = note("a", now).copy(preview = "摘要", body = "正文第一行")
-        val derived = note("b", now).copy(preview = "", body = "\n正文第一行\n第二行")
-        val empty = note("c", now).copy(preview = "  ", body = "\n  \n")
+    fun previewUsesExplicitTextThenFirstLineThenMedia() {
+        val explicit = note("a", now).copy(
+            preview = "摘要",
+            blocks = listOf(NoteBlock.Text("t", "正文第一行")),
+        )
+        val derived = note("b", now).copy(
+            blocks = listOf(
+                NoteBlock.Text("blank", "  "),
+                NoteBlock.Text("line", "正文第一行"),
+            ),
+        )
+        val image = note("c", now).copy(blocks = listOf(NoteBlock.Image("img", "a.jpg")))
+        val empty = note("d", now)
         assertEquals("摘要", explicit.displayPreview())
         assertEquals("正文第一行", derived.displayPreview())
+        assertEquals("[图片]", image.displayPreview())
         assertEquals("", empty.displayPreview())
     }
 
     @Test
-    fun checklistInsertsOnItsOwnLine() {
-        assertEquals("☐ ", insertChecklistLine(""))
-        assertEquals("买菜\n☐ ", insertChecklistLine("买菜"))
-        assertEquals("买菜\n☐ ", insertChecklistLine("买菜\n"))
+    fun plainTextMarksFinishedChecklistItems() {
+        val note = note("list", now).copy(
+            blocks = listOf(
+                NoteBlock.Checklist("1", "西红柿", done = true),
+                NoteBlock.Checklist("2", "鸡蛋", done = false),
+            ),
+        )
+        assertEquals("✅ 西红柿\n☐ 鸡蛋", note.plainText())
+    }
+
+    @Test
+    fun blankNoteIgnoresEmptyParagraphsOnly() {
+        val empty = note("a", now).copy(title = "", blocks = listOf(NoteBlock.Text("t", "  ")))
+        val checklist = note("b", now).copy(title = "", blocks = listOf(NoteBlock.Checklist("c", "")))
+        assertEquals(true, empty.isContentBlank())
+        assertEquals(false, checklist.isContentBlank())
     }
 
     private fun millis(date: LocalDate, hour: Int, minute: Int): Long {
@@ -79,10 +103,9 @@ class NoteTimeTest {
         return Note(
             id = id,
             title = id,
-            body = "",
+            blocks = emptyList(),
             updatedAt = updatedAt,
             tint = NoteTint.White,
-            kind = NoteKind.Note,
         )
     }
 }
