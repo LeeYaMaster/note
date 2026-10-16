@@ -126,9 +126,9 @@ private fun textPiece(
 }
 
 private fun checklistPiece(block: NoteBlock.Checklist, contentWidth: Float): Piece {
-    val circle = 40f
+    val box = 36f
     val gap = 20f
-    val textWidth = (contentWidth - circle - gap).toInt().coerceAtLeast(40)
+    val textWidth = (contentWidth - box - gap).toInt().coerceAtLeast(40)
     val layout = staticLayout(
         text = block.text.ifEmpty { " " },
         width = textWidth,
@@ -138,34 +138,43 @@ private fun checklistPiece(block: NoteBlock.Checklist, contentWidth: Float): Pie
         align = block.align,
         strike = block.done,
     )
-    val height = maxOf(circle, layout.height.toFloat())
+    val height = maxOf(box, layout.height.toFloat())
     return Piece(height) { canvas, top ->
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val cx = PADDING + circle / 2f
-        val cy = top + height / 2f
+        val left = PADDING
+        val topBox = top + (height - box) / 2f
+        val radius = 8f
         if (block.done) {
             paint.style = Paint.Style.FILL
             paint.color = GREEN
-            canvas.drawCircle(cx, cy, circle / 2f, paint)
+            canvas.drawRoundRect(left, topBox, left + box, topBox + box, radius, radius, paint)
             paint.color = Color.WHITE
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 5f
+            paint.strokeWidth = 4.5f
             paint.strokeCap = Paint.Cap.ROUND
             paint.strokeJoin = Paint.Join.ROUND
             val path = Path().apply {
-                moveTo(cx - 10f, cy + 1f)
-                lineTo(cx - 3f, cy + 9f)
-                lineTo(cx + 12f, cy - 8f)
+                moveTo(left + 9f, topBox + 18f)
+                lineTo(left + 15f, topBox + 25f)
+                lineTo(left + 27f, topBox + 12f)
             }
             canvas.drawPath(path, paint)
         } else {
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 3f
             paint.color = MUTED
-            canvas.drawCircle(cx, cy, circle / 2f - 1.5f, paint)
+            canvas.drawRoundRect(
+                left + 1.5f,
+                topBox + 1.5f,
+                left + box - 1.5f,
+                topBox + box - 1.5f,
+                radius,
+                radius,
+                paint,
+            )
         }
         canvas.save()
-        canvas.translate(PADDING + circle + gap, top + (height - layout.height) / 2f)
+        canvas.translate(PADDING + box + gap, top + (height - layout.height) / 2f)
         layout.draw(canvas)
         canvas.restore()
     }
@@ -190,12 +199,12 @@ private fun mediaPiece(
     val captionLayout = if (caption.isBlank()) {
         null
     } else {
-        staticLayout(caption, width.toInt().coerceAtLeast(40), 34f, MUTED, Typeface.SANS_SERIF, ParagraphAlign.Center, false)
+        staticLayout(caption, width.toInt().coerceAtLeast(40), 34f, MUTED, Typeface.SANS_SERIF, ParagraphAlign.Start, false)
     }
     val captionGap = if (captionLayout == null) 0f else 16f
     val height = imageHeight + captionGap + (captionLayout?.height?.toFloat() ?: 0f)
     return Piece(height) { canvas, top ->
-        val left = PADDING + (contentWidth - width) / 2f
+        val left = PADDING
         if (image == null || image.isRecycled) {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = MUTED

@@ -28,7 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -78,7 +78,7 @@ import com.flatnotes.ui.icons.AppIcon
 import com.flatnotes.ui.theme.FlatDimens
 import com.flatnotes.ui.theme.FlatPalette
 import com.flatnotes.ui.theme.FlatTheme
-import com.flatnotes.ui.theme.toStyle
+import com.flatnotes.ui.theme.TintStyle
 
 @Composable
 fun NotesRoute(
@@ -460,9 +460,10 @@ private fun NotesWaterfall(
         horizontalArrangement = Arrangement.spacedBy(FlatDimens.GridGap),
         verticalItemSpacing = FlatDimens.GridGap,
     ) {
-        items(notes, key = { it.id }) { note ->
+        itemsIndexed(notes, key = { _, note -> note.id }) { index, note ->
             WaterfallCard(
                 note = note,
+                tint = waterfallTint(index),
                 nowMillis = nowMillis,
                 selecting = selecting,
                 selected = note.id in selected,
@@ -473,16 +474,29 @@ private fun NotesWaterfall(
     }
 }
 
+private val waterfallTints = listOf(
+    TintStyle(Color(0xFFFFF3C4), Color(0xFFE4D48A)),
+    TintStyle(Color(0xFFD7EBFF), Color(0xFFB7D4F0)),
+    TintStyle(Color(0xFFDDF6E3), Color(0xFFB5E0C2)),
+    TintStyle(Color(0xFFFFE3EE), Color(0xFFF0C2D4)),
+    TintStyle(Color(0xFFE7E3FF), Color(0xFFC9C2EE)),
+    TintStyle(Color(0xFFFFE6D4), Color(0xFFE8C6AC)),
+    TintStyle(Color(0xFFD8F6F2), Color(0xFFB4E0DA)),
+    TintStyle(Color(0xFFFFF4E4), Color(0xFFE6D4B8)),
+)
+
+private fun waterfallTint(index: Int): TintStyle = waterfallTints[index % waterfallTints.size]
+
 @Composable
 private fun WaterfallCard(
     note: Note,
+    tint: TintStyle,
     nowMillis: Long,
     selecting: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    val tint = note.tint.toStyle()
     val shape = RoundedCornerShape(FlatDimens.Radius)
     Box {
         Column(
