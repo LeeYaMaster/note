@@ -64,6 +64,7 @@ import com.flatnotes.data.fontOrNull
 import com.flatnotes.data.plainText
 import com.flatnotes.data.sampleNotes
 import com.flatnotes.domain.EditResult
+import com.flatnotes.domain.EditorSpacing
 import com.flatnotes.domain.adjustMediaScale
 import com.flatnotes.domain.commitTextChange
 import com.flatnotes.domain.insertBlockAfter
@@ -126,6 +127,8 @@ fun EditorRoute(
             onBack()
         },
         onBack = onBack,
+        spacing = viewModel.spacing,
+        onSpacingChange = viewModel::updateSpacing,
     )
 }
 
@@ -141,11 +144,14 @@ fun EditorScreen(
     onDeleteMedia: (String) -> Unit,
     onDelete: () -> Unit,
     onBack: () -> Unit,
+    spacing: EditorSpacing = EditorSpacing.Default,
+    onSpacingChange: (EditorSpacing) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
     var shareOpen by remember { mutableStateOf(false) }
+    var spacingOpen by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var doodling by remember { mutableStateOf(false) }
     var formatOpen by remember { mutableStateOf(false) }
@@ -172,10 +178,11 @@ fun EditorScreen(
         runCatching { requesters[id]?.requestFocus() }
     }
 
-    BackHandler(enabled = confirmDelete || doodling) {
+    BackHandler(enabled = confirmDelete || doodling || spacingOpen) {
         when {
             confirmDelete -> confirmDelete = false
             doodling -> doodling = false
+            spacingOpen -> spacingOpen = false
         }
     }
 
@@ -245,6 +252,7 @@ fun EditorScreen(
                     menuOpen = true
                 },
                 onMenuDismiss = { menuOpen = false },
+                onSpacing = { spacingOpen = true },
                 onDelete = { confirmDelete = true },
             )
             Hairline()
@@ -295,6 +303,7 @@ fun EditorScreen(
                     blocks = note.blocks,
                     mediaFile = mediaFile,
                     loadBitmap = loadBitmap,
+                    spacing = spacing,
                     focusRequesters = requesters,
                     mediaMenuId = mediaMenuId,
                     captionEditing = captionEditing,
@@ -438,6 +447,13 @@ fun EditorScreen(
                 onFormat = { formatOpen = !formatOpen },
             )
         }
+        if (spacingOpen) {
+            SpacingSheet(
+                spacing = spacing,
+                onChange = onSpacingChange,
+                onDismiss = { spacingOpen = false },
+            )
+        }
         if (confirmDelete) {
             FlatConfirmDialog(
                 title = "删除笔记",
@@ -503,6 +519,7 @@ private fun EditorTopBar(
     onShareImage: () -> Unit,
     onMenuOpen: () -> Unit,
     onMenuDismiss: () -> Unit,
+    onSpacing: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Row(
@@ -539,6 +556,7 @@ private fun EditorTopBar(
                 expanded = menuOpen,
                 onDismiss = onMenuDismiss,
                 entries = listOf(
+                    FlatMenuEntry(label = "间距", onClick = onSpacing),
                     FlatMenuEntry(
                         label = "删除",
                         color = FlatPalette.Destructive,

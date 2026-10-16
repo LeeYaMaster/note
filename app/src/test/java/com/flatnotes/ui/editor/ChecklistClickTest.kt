@@ -3,8 +3,10 @@ package com.flatnotes.ui.editor
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.flatnotes.data.NoteBlock
+import com.flatnotes.data.sampleNotes
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -50,5 +52,28 @@ class ChecklistClickTest {
         compose.onNodeWithContentDescription("未完成").assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription("已完成").assertIsDisplayed().performClick()
         assertEquals(listOf("milk", "bread"), toggled)
+    }
+
+    @Test
+    fun spacingPanelListsTheThreeControls() {
+        compose.setContent {
+            EditorScreen(
+                note = sampleNotes().first(),
+                mediaFile = { File("missing") },
+                loadBitmap = { null },
+                onTitleChange = {},
+                onBlocksChange = {},
+                onImportImage = { null },
+                onSaveDoodle = { "doodle.png" },
+                onDeleteMedia = {},
+                onDelete = {},
+                onBack = {},
+            )
+        }
+        compose.onNodeWithContentDescription("更多").performClick()
+        compose.onNodeWithText("间距").performClick()
+        compose.onNodeWithText("正文间距").assertIsDisplayed()
+        compose.onNodeWithText("清单间距").assertIsDisplayed()
+        compose.onNodeWithText("块间距（正文与清单/图片/涂鸦）").assertIsDisplayed()
     }
 }

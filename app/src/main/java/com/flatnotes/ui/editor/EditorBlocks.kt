@@ -69,6 +69,8 @@ import androidx.compose.foundation.Canvas
 import com.flatnotes.data.NoteBlock
 import com.flatnotes.data.NoteFont
 import com.flatnotes.data.ParagraphAlign
+import com.flatnotes.domain.EditorSpacing
+import com.flatnotes.domain.blockGapDp
 import com.flatnotes.domain.mediaScaleSteps
 import com.flatnotes.ui.components.FlatText
 import com.flatnotes.ui.theme.FlatDimens
@@ -95,7 +97,6 @@ internal fun NoteFont.label(): String = when (this) {
 
 private val BlockFontSize = 16.sp
 private val BlockLineHeight = 24.sp
-private val BlockGap = 22.dp
 private val CheckSize = 22.dp
 
 @Composable
@@ -103,6 +104,7 @@ internal fun EditorBody(
     blocks: List<NoteBlock>,
     mediaFile: (String) -> File,
     loadBitmap: (File) -> Bitmap?,
+    spacing: EditorSpacing = EditorSpacing.Default,
     focusRequesters: MutableMap<String, FocusRequester>,
     mediaMenuId: String?,
     captionEditing: Boolean,
@@ -127,7 +129,8 @@ internal fun EditorBody(
     Column(Modifier.fillMaxWidth()) {
         blocks.forEachIndexed { index, block ->
             if (index > 0) {
-                Spacer(Modifier.height(gapBetween(blocks[index - 1], block)))
+                val gap = blockGapDp(blocks[index - 1], block, spacing)
+                if (gap > 0) Spacer(Modifier.height(gap.dp))
             }
             when (block) {
                 is NoteBlock.Text -> TextBlockField(
@@ -580,12 +583,6 @@ private fun androidx.compose.foundation.layout.RowScope.ActionLabel(
     ) {
         FlatText(text = label, color = tint, fontSize = 13.sp)
     }
-}
-
-private fun gapBetween(previous: NoteBlock, current: NoteBlock): androidx.compose.ui.unit.Dp {
-    val sameText = previous is NoteBlock.Text && current is NoteBlock.Text
-    val sameChecklist = previous is NoteBlock.Checklist && current is NoteBlock.Checklist
-    return if (sameText || sameChecklist) 0.dp else BlockGap
 }
 
 private fun blockTextStyle(align: ParagraphAlign, font: NoteFont, done: Boolean): TextStyle {
