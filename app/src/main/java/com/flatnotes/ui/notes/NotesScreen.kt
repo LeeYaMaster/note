@@ -29,7 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -44,8 +44,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -70,7 +75,6 @@ import com.flatnotes.ui.components.FlatText
 import com.flatnotes.ui.components.FlatTextButton
 import com.flatnotes.ui.components.Hairline
 import com.flatnotes.ui.icons.AppIcon
-import com.flatnotes.ui.icons.FlatIcon
 import com.flatnotes.ui.theme.FlatDimens
 import com.flatnotes.ui.theme.FlatPalette
 import com.flatnotes.ui.theme.FlatTheme
@@ -84,6 +88,7 @@ fun NotesRoute(
 ) {
     NotesScreen(
         notes = viewModel.notes,
+        ready = viewModel.ready,
         layout = viewModel.layout,
         onLayoutChange = viewModel::updateLayout,
         onOpenNote = onOpenNote,
@@ -95,6 +100,7 @@ fun NotesRoute(
 @Composable
 fun NotesScreen(
     notes: List<Note>,
+    ready: Boolean = true,
     layout: NotesLayout,
     onLayoutChange: (NotesLayout) -> Unit,
     onOpenNote: (String) -> Unit,
@@ -170,7 +176,9 @@ fun NotesScreen(
             }
             Hairline()
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (visible.isEmpty()) {
+                if (!ready) {
+                    Box(Modifier.fillMaxSize())
+                } else if (visible.isEmpty()) {
                     EmptyHint(message = if (query.isNotBlank()) "没有找到相关内容" else "暂无笔记")
                 } else when (layout) {
                     NotesLayout.List -> NotesList(
@@ -202,7 +210,7 @@ fun NotesScreen(
                         onLongClick = ::openSelection,
                     )
                 }
-                if (!selecting) {
+                if (ready && !selecting) {
                     FlatFab(
                         onClick = onCreateNote,
                         modifier = Modifier
@@ -529,24 +537,41 @@ private fun WaterfallCard(
 
 @Composable
 private fun SelectionMark(selected: Boolean, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
+    val accent = FlatPalette.Accent
+    val idle = FlatPalette.TextSecondary
+    Canvas(
+        modifier
             .size(22.dp)
-            .semantics { contentDescription = if (selected) "已选择" else "未选择" }
-            .border(
-                width = 1.5.dp,
-                color = if (selected) FlatPalette.Accent else FlatPalette.TextSecondary,
-                shape = CircleShape,
-            )
-            .background(if (selected) FlatPalette.Accent else Color.White, CircleShape),
-        contentAlignment = Alignment.Center,
+            .semantics { contentDescription = if (selected) "已选择" else "未选择" },
     ) {
+        val stroke = 1.5.dp.toPx()
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension / 2f - stroke / 2f
         if (selected) {
-            FlatIcon(
-                icon = AppIcon.Check,
-                tint = Color.White,
-                modifier = Modifier.size(14.dp),
-                strokeWidth = 2.dp,
+            drawCircle(color = accent, radius = radius, center = center)
+        } else {
+            drawCircle(color = Color.White, radius = radius, center = center)
+        }
+        drawCircle(
+            color = if (selected) accent else idle,
+            radius = radius,
+            center = center,
+            style = Stroke(width = stroke),
+        )
+        if (selected) {
+            val path = Path().apply {
+                moveTo(size.width * 0.28f, size.height * 0.52f)
+                lineTo(size.width * 0.44f, size.height * 0.68f)
+                lineTo(size.width * 0.73f, size.height * 0.34f)
+            }
+            drawPath(
+                path,
+                Color.White,
+                style = Stroke(
+                    width = size.minDimension * 0.1f,
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round,
+                ),
             )
         }
     }

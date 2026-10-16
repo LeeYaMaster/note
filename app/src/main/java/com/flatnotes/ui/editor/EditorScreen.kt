@@ -49,22 +49,28 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.flatnotes.data.Note
 import com.flatnotes.data.NoteBlock
+import com.flatnotes.data.NoteFont
 import com.flatnotes.data.ParagraphAlign
 import com.flatnotes.data.alignOrNull
+import com.flatnotes.data.fontOrNull
 import com.flatnotes.data.plainText
 import com.flatnotes.data.sampleNotes
 import com.flatnotes.domain.EditResult
+import com.flatnotes.domain.adjustMediaScale
 import com.flatnotes.domain.commitTextChange
 import com.flatnotes.domain.insertBlockAfter
 import com.flatnotes.domain.removeBlock
 import com.flatnotes.domain.removeEmptyBlock
 import com.flatnotes.domain.setAlign
+import com.flatnotes.domain.setFont
+import com.flatnotes.domain.setMediaCaption
 import com.flatnotes.domain.toggleChecklist
 import com.flatnotes.ui.NotesViewModel
 import com.flatnotes.ui.components.FlatConfirmDialog
@@ -138,9 +144,12 @@ fun EditorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
+    var shareOpen by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var doodling by remember { mutableStateOf(false) }
     var formatOpen by remember { mutableStateOf(false) }
+    var mediaMenuId by remember { mutableStateOf<String?>(null) }
+    var captionEditing by remember { mutableStateOf(false) }
     var banner by remember { mutableStateOf<String?>(null) }
     var focusedId by remember(note.id) {
         mutableStateOf(note.blocks.firstOrNull { it.alignOrNull() != null }?.id)
@@ -205,9 +214,35 @@ fun EditorScreen(
             EditorTopBar(
                 title = note.title,
                 menuOpen = menuOpen,
+                shareOpen = shareOpen,
                 onBack = onBack,
-                onShare = { shareNote(context, note.title, note.plainText()) },
-                onMenuOpen = { menuOpen = true },
+                onShareOpen = {
+                    menuOpen = false
+                    shareOpen = true
+                },
+                onShareDismiss = { shareOpen = false },
+                onShareText = { shareNote(context, note.title, note.plainText()) },
+                onShareImage = {
+                    scope.launch {
+                        val rendered = runCatching {
+                            withContext(Dispatchers.IO) {
+                                renderNoteBitmap(note) { name -> loadBitmap(mediaFile(name)) }
+                            }
+                        }.getOrNull()
+                        if (rendered == null) {
+                            banner = "无法生成分享图片"
+                        } else {
+                            banner = null
+                            val shared = runCatching { shareNoteImage(context, rendered) }
+                            rendered.recycle()
+                            if (shared.isFailure) banner = "无法分享图片"
+                        }
+                    }
+                },
+                onMenuOpen = {
+                    shareOpen = false
+                    menuOpen = true
+                },
                 onMenuDismiss = { menuOpen = false },
                 onDelete = { confirmDelete = true },
             )
@@ -260,7 +295,13 @@ fun EditorScreen(
                     mediaFile = mediaFile,
                     loadBitmap = loadBitmap,
                     focusRequesters = requesters,
-                    onFocus = { focusedId = it },
+                    mediaMenuId = mediaMenuId,
+                    captionEditing = captionEditing,
+                    onFocus = { id ->
+                        focusedId = id
+                        mediaMenuId = null
+                        captionEditing = false
+                    },
                     onTextChange = { id, value ->
                         apply(commitTextChange(note.blocks, id, value, ::freshId))
                     },
@@ -268,6 +309,31 @@ fun EditorScreen(
                         apply(removeEmptyBlock(note.blocks, id, ::freshId))
                     },
                     onToggle = { id -> onBlocksChange(toggleChecklist(note.blocks, id)) },
+                    onMediaMenu = { id ->
+                        if (mediaMenuId == id) {
+                            mediaMenuId = null
+                            captionEditing = false
+                        } else {
+                            mediaMenuId = id
+                            captionEditing = false
+                            focusedId = id
+                        }
+                    },
+                    onEnlarge = { id ->
+                        val next = adjustMediaScale(note.blocks, id, enlarge = true)
+                        if (next != note.blocks) onBlocksChange(next)
+                    },
+                    onShrink = { id ->
+                        val next = adjustMediaScale(note.blocks, id, enlarge = false)
+                        if (next != note.blocks) onBlocksChange(next)
+                    },
+                    onCaptionEdit = { id ->
+                        mediaMenuId = id
+                        captionEditing = !captionEditing
+                    },
+                    onCaptionChange = { id, value ->
+                        onBlocksChange(setMediaCaption(note.blocks, id, value))
+                    },
                     onRemoveMedia = { block ->
                         val name = when (block) {
                             is NoteBlock.Image -> block.fileName
@@ -275,6 +341,10 @@ fun EditorScreen(
                             else -> null
                         }
                         if (name != null) {
+                            if (mediaMenuId == block.id) {
+                                mediaMenuId = null
+                                captionEditing = false
+                            }
                             onDeleteMedia(name)
                             val result = removeBlock(note.blocks, block.id, ::freshId)
                             onBlocksChange(result.blocks)
@@ -282,6 +352,10 @@ fun EditorScreen(
                         }
                     },
                     onAppendText = {
+                        if (mediaMenuId != null) {
+                            mediaMenuId = null
+                            captionEditing = false
+                        }
                         val last = note.blocks.lastOrNull()
                         if (last is NoteBlock.Text && last.text.isEmpty()) {
                             focusedId = last.id
@@ -311,15 +385,27 @@ fun EditorScreen(
                 }
             }
             if (formatOpen) {
-                AlignStrip(
-                    selected = note.blocks.firstOrNull { it.id == focusedId }?.alignOrNull(),
-                    onSelect = { align ->
+                val focused = note.blocks.firstOrNull { it.id == focusedId }
+                FormatStrip(
+                    align = focused?.alignOrNull(),
+                    font = focused?.fontOrNull(),
+                    onAlign = { align ->
                         val target = note.blocks.firstOrNull { it.id == focusedId && it.alignOrNull() != null }
                             ?: note.blocks.lastOrNull { it.alignOrNull() != null }
                         if (target == null) {
                             apply(insertBlockAfter(note.blocks, null, NoteBlock.Text(freshId(), "", align)))
                         } else {
                             onBlocksChange(setAlign(note.blocks, target.id, align))
+                            focusedId = target.id
+                        }
+                    },
+                    onFont = { font ->
+                        val target = note.blocks.firstOrNull { it.id == focusedId && it.fontOrNull() != null }
+                            ?: note.blocks.lastOrNull { it.fontOrNull() != null }
+                        if (target == null) {
+                            apply(insertBlockAfter(note.blocks, null, NoteBlock.Text(freshId(), "", font = font)))
+                        } else {
+                            onBlocksChange(setFont(note.blocks, target.id, font))
                             focusedId = target.id
                         }
                     },
@@ -408,8 +494,12 @@ private fun Note.isTypingBlank(): Boolean {
 private fun EditorTopBar(
     title: String,
     menuOpen: Boolean,
+    shareOpen: Boolean,
     onBack: () -> Unit,
-    onShare: () -> Unit,
+    onShareOpen: () -> Unit,
+    onShareDismiss: () -> Unit,
+    onShareText: () -> Unit,
+    onShareImage: () -> Unit,
     onMenuOpen: () -> Unit,
     onMenuDismiss: () -> Unit,
     onDelete: () -> Unit,
@@ -431,7 +521,17 @@ private fun EditorTopBar(
             fontWeight = FontWeight.Medium,
             maxLines = 1,
         )
-        FlatIconButton(icon = AppIcon.Share, contentDescription = "分享", onClick = onShare)
+        Box {
+            FlatIconButton(icon = AppIcon.Share, contentDescription = "分享", onClick = onShareOpen)
+            FlatMenu(
+                expanded = shareOpen,
+                onDismiss = onShareDismiss,
+                entries = listOf(
+                    FlatMenuEntry(label = "分享文字", onClick = onShareText),
+                    FlatMenuEntry(label = "分享图片", onClick = onShareImage),
+                ),
+            )
+        }
         Box {
             FlatIconButton(icon = AppIcon.More, contentDescription = "更多", onClick = onMenuOpen)
             FlatMenu(
@@ -450,26 +550,69 @@ private fun EditorTopBar(
 }
 
 @Composable
-private fun AlignStrip(
-    selected: ParagraphAlign?,
-    onSelect: (ParagraphAlign) -> Unit,
+private fun FormatStrip(
+    align: ParagraphAlign?,
+    font: NoteFont?,
+    onAlign: (ParagraphAlign) -> Unit,
+    onFont: (NoteFont) -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(FlatPalette.Background)
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        AlignOption(AppIcon.AlignLeft, "左对齐", selected == ParagraphAlign.Start) {
-            onSelect(ParagraphAlign.Start)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AlignOption(AppIcon.AlignLeft, "左对齐", align == ParagraphAlign.Start) {
+                onAlign(ParagraphAlign.Start)
+            }
+            AlignOption(AppIcon.AlignCenter, "居中", align == ParagraphAlign.Center) {
+                onAlign(ParagraphAlign.Center)
+            }
+            AlignOption(AppIcon.AlignRight, "右对齐", align == ParagraphAlign.End) {
+                onAlign(ParagraphAlign.End)
+            }
         }
-        AlignOption(AppIcon.AlignCenter, "居中", selected == ParagraphAlign.Center) {
-            onSelect(ParagraphAlign.Center)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NoteFont.entries.forEach { option ->
+                FontOption(
+                    label = option.label(),
+                    family = option.family(),
+                    selected = font == option,
+                    onClick = { onFont(option) },
+                )
+            }
         }
-        AlignOption(AppIcon.AlignRight, "右对齐", selected == ParagraphAlign.End) {
-            onSelect(ParagraphAlign.End)
-        }
+    }
+}
+
+@Composable
+private fun FontOption(
+    label: String,
+    family: androidx.compose.ui.text.font.FontFamily,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val color = if (selected) FlatPalette.Accent else FlatPalette.IconMuted
+    Box(
+        modifier = Modifier
+            .border(
+                width = 1.dp,
+                color = if (selected) FlatPalette.Accent else FlatPalette.Divider,
+                shape = RoundedCornerShape(FlatDimens.Radius),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        FlatText(
+            text = label,
+            color = color,
+            fontSize = 14.sp,
+            fontFamily = family,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

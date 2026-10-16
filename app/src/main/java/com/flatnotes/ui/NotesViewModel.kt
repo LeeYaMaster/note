@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,22 +13,46 @@ import androidx.lifecycle.AndroidViewModel
 import com.flatnotes.data.Note
 import com.flatnotes.data.NoteBlock
 import com.flatnotes.data.NoteFiles
+import com.flatnotes.data.NoteStore
 import com.flatnotes.data.NoteTint
 import com.flatnotes.data.NotesLayout
 import com.flatnotes.data.isContentBlank
 import com.flatnotes.data.sampleNotes
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.Executors
 
 class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val files = NoteFiles(application)
+    private val store = NoteStore(application)
+    private val writer = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
 
     var layout by mutableStateOf(readLayout())
         private set
 
-    var notes by mutableStateOf(sampleNotes())
+    var notes by mutableStateOf<List<Note>>(emptyList())
         private set
+
+    var ready by mutableStateOf(false)
+        private set
+
+    init {
+        writer.execute {
+            val loaded = runCatching { loadOrSeed() }.getOrElse { sampleNotes() }
+            main.post {
+                if (!ready) {
+                    notes = loaded
+                    ready = true
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        writer.shutdown()
+    }
 
     fun updateLayout(value: NotesLayout) {
         layout = value
@@ -38,32 +64,38 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun create(): String {
         val id = UUID.randomUUID().toString()
         val tint = NoteTint.entries[notes.size % NoteTint.entries.size]
-        notes = listOf(
-            Note(
-                id = id,
-                title = "",
-                blocks = listOf(NoteBlock.Text(id = UUID.randomUUID().toString(), text = "")),
-                updatedAt = System.currentTimeMillis(),
-                tint = tint,
-            ),
-        ) + notes
+        publish(
+            listOf(
+                Note(
+                    id = id,
+                    title = "",
+                    blocks = listOf(NoteBlock.Text(id = UUID.randomUUID().toString(), text = "")),
+                    updatedAt = System.currentTimeMillis(),
+                    tint = tint,
+                ),
+            ) + notes,
+        )
         return id
     }
 
     fun updateTitle(id: String, title: String) {
-        notes = notes.map { note ->
-            if (note.id == id) note.copy(title = title, updatedAt = System.currentTimeMillis()) else note
-        }
+        publish(
+            notes.map { note ->
+                if (note.id == id) note.copy(title = title, updatedAt = System.currentTimeMillis()) else note
+            },
+        )
     }
 
     fun updateBlocks(id: String, blocks: List<NoteBlock>) {
-        notes = notes.map { note ->
-            if (note.id == id) {
-                note.copy(blocks = blocks, preview = "", updatedAt = System.currentTimeMillis())
-            } else {
-                note
-            }
-        }
+        publish(
+            notes.map { note ->
+                if (note.id == id) {
+                    note.copy(blocks = blocks, preview = "", updatedAt = System.currentTimeMillis())
+                } else {
+                    note
+                }
+            },
+        )
     }
 
     fun mediaFile(noteId: String, name: String): File = files.file(noteId, name)
@@ -84,13 +116,34 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteAll(ids: Set<String>) {
         if (ids.isEmpty()) return
-        notes = notes.filterNot { it.id in ids }
-        ids.forEach { files.deleteNote(it) }
+        publish(notes.filterNot { it.id in ids }) {
+            ids.forEach { files.deleteNote(it) }
+        }
     }
 
     fun discardIfBlank(id: String) {
         val current = note(id) ?: return
         if (current.isContentBlank()) delete(id)
+    }
+
+    private fun loadOrSeed(): List<Note> {
+        if (!prefs.getBoolean(KEY_SEEDED, false)) {
+            val samples = sampleNotes()
+            store.replaceAll(samples)
+            prefs.edit().putBoolean(KEY_SEEDED, true).commit()
+            return samples
+        }
+        return store.loadAll()
+    }
+
+    private fun publish(next: List<Note>, afterSave: (() -> Unit)? = null) {
+        notes = next
+        if (!ready || writer.isShutdown) return
+        val snapshot = next.toList()
+        writer.execute {
+            val saved = runCatching { store.replaceAll(snapshot) }.isSuccess
+            if (saved) afterSave?.invoke()
+        }
     }
 
     private fun readLayout(): NotesLayout {
@@ -102,5 +155,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private companion object {
         const val PREFS = "flat_notes"
         const val KEY_LAYOUT = "notes_layout"
+        const val KEY_SEEDED = "notes_seeded"
     }
 }

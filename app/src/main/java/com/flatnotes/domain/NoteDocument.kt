@@ -1,7 +1,9 @@
 package com.flatnotes.domain
 
 import com.flatnotes.data.NoteBlock
+import com.flatnotes.data.NoteFont
 import com.flatnotes.data.ParagraphAlign
+import kotlin.math.abs
 
 data class EditResult(
     val blocks: List<NoteBlock>,
@@ -57,6 +59,52 @@ fun setAlign(blocks: List<NoteBlock>, id: String, align: ParagraphAlign): List<N
     }
 }
 
+fun setFont(blocks: List<NoteBlock>, id: String, font: NoteFont): List<NoteBlock> {
+    return blocks.map { block ->
+        when {
+            block.id != id -> block
+            block is NoteBlock.Text -> block.copy(font = font)
+            block is NoteBlock.Checklist -> block.copy(font = font)
+            else -> block
+        }
+    }
+}
+
+val mediaScaleSteps: List<Float> = listOf(0.45f, 0.72f, 1f)
+
+fun adjustMediaScale(blocks: List<NoteBlock>, id: String, enlarge: Boolean): List<NoteBlock> {
+    return blocks.map { block ->
+        val current = when (block) {
+            is NoteBlock.Image -> if (block.id == id) block.scale else return@map block
+            is NoteBlock.Doodle -> if (block.id == id) block.scale else return@map block
+            else -> return@map block
+        }
+        val index = mediaScaleSteps.indices.minBy { abs(mediaScaleSteps[it] - current) }
+        val nextIndex = (index + if (enlarge) 1 else -1).coerceIn(mediaScaleSteps.indices)
+        val next = mediaScaleSteps[nextIndex]
+        if (next == current) {
+            block
+        } else {
+            when (block) {
+                is NoteBlock.Image -> block.copy(scale = next)
+                is NoteBlock.Doodle -> block.copy(scale = next)
+                else -> block
+            }
+        }
+    }
+}
+
+fun setMediaCaption(blocks: List<NoteBlock>, id: String, caption: String): List<NoteBlock> {
+    return blocks.map { block ->
+        when {
+            block.id != id -> block
+            block is NoteBlock.Image -> block.copy(caption = caption)
+            block is NoteBlock.Doodle -> block.copy(caption = caption)
+            else -> block
+        }
+    }
+}
+
 fun insertBlockAfter(blocks: List<NoteBlock>, afterId: String?, block: NoteBlock): EditResult {
     if (afterId == null) return EditResult(blocks + block, block.id)
     val index = blocks.indexOfFirst { it.id == afterId }
@@ -106,7 +154,7 @@ private fun NoteBlock.withText(text: String): NoteBlock = when (this) {
 }
 
 private fun NoteBlock.spawn(id: String, text: String): NoteBlock = when (this) {
-    is NoteBlock.Text -> NoteBlock.Text(id = id, text = text, align = align)
-    is NoteBlock.Checklist -> NoteBlock.Checklist(id = id, text = text, done = false, align = align)
+    is NoteBlock.Text -> NoteBlock.Text(id = id, text = text, align = align, font = font)
+    is NoteBlock.Checklist -> NoteBlock.Checklist(id = id, text = text, done = false, align = align, font = font)
     is NoteBlock.Image, is NoteBlock.Doodle -> NoteBlock.Text(id = id, text = text)
 }
