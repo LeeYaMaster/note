@@ -94,10 +94,9 @@ internal fun NoteFont.label(): String = when (this) {
 }
 
 private val BlockFontSize = 16.sp
-private val BlockLineHeight = 32.sp
-private val LineGap = 12.dp
+private val BlockLineHeight = 24.sp
 private val BlockGap = 22.dp
-private val CheckSize = 32.dp
+private val CheckSize = 22.dp
 
 @Composable
 internal fun EditorBody(
@@ -274,7 +273,7 @@ private fun ChecklistBlockField(
         ) {
             ChecklistMark(done)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(8.dp))
         BasicTextField(
             value = text,
             onValueChange = onTextChange,
@@ -303,11 +302,11 @@ private fun ChecklistBlockField(
 @Composable
 private fun ChecklistMark(done: Boolean) {
     Canvas(Modifier.size(CheckSize)) {
-        val stroke = 2.dp.toPx()
+        val stroke = 1.7.dp.toPx()
         val inset = stroke / 2f
         val side = size.minDimension - inset * 2
         val topLeft = Offset(inset, inset)
-        val corner = CornerRadius(6.dp.toPx())
+        val corner = CornerRadius(4.dp.toPx())
         if (done) {
             drawRoundRect(
                 color = CheckGreen,
@@ -586,7 +585,7 @@ private fun androidx.compose.foundation.layout.RowScope.ActionLabel(
 private fun gapBetween(previous: NoteBlock, current: NoteBlock): androidx.compose.ui.unit.Dp {
     val sameText = previous is NoteBlock.Text && current is NoteBlock.Text
     val sameChecklist = previous is NoteBlock.Checklist && current is NoteBlock.Checklist
-    return if (sameText || sameChecklist) LineGap else BlockGap
+    return if (sameText || sameChecklist) 0.dp else BlockGap
 }
 
 private fun blockTextStyle(align: ParagraphAlign, font: NoteFont, done: Boolean): TextStyle {
