@@ -19,9 +19,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,13 +26,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,16 +52,11 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -80,9 +69,7 @@ import androidx.compose.foundation.Canvas
 import com.flatnotes.data.NoteBlock
 import com.flatnotes.data.NoteFont
 import com.flatnotes.data.ParagraphAlign
-import com.flatnotes.domain.TapPoint
 import com.flatnotes.domain.mediaScaleSteps
-import com.flatnotes.domain.nearestChecklistTap
 import com.flatnotes.ui.components.FlatText
 import com.flatnotes.ui.theme.FlatDimens
 import com.flatnotes.ui.theme.FlatPalette
@@ -107,78 +94,10 @@ internal fun NoteFont.label(): String = when (this) {
 }
 
 private val BlockFontSize = 16.sp
-private val BlockLineHeight = 24.sp
+private val BlockLineHeight = 32.sp
+private val LineGap = 12.dp
 private val BlockGap = 22.dp
-private val CheckSize = 18.dp
-private val CheckTap = 44.dp
-
-/**
- * Checklist rows stay one text line tall. The 44dp tap square is resolved
- * against this root, which includes the page padding, so the extra area can
- * spill past the line. Overlapping squares pick the nearer box.
- */
-internal class ChecklistHitState {
-    private var root: LayoutCoordinates? = null
-    private val anchors = mutableMapOf<String, LayoutCoordinates>()
-    private val centers = mutableStateMapOf<String, Offset>()
-
-    fun updateRoot(coords: LayoutCoordinates) {
-        root = coords
-        anchors.keys.toList().forEach(::publish)
-    }
-
-    fun updateAnchor(id: String, coords: LayoutCoordinates) {
-        anchors[id] = coords
-        publish(id)
-    }
-
-    fun remove(id: String) {
-        anchors.remove(id)
-        centers.remove(id)
-    }
-
-    fun points(): List<TapPoint> = centers.map { (id, center) -> TapPoint(id, center.x, center.y) }
-
-    private fun publish(id: String) {
-        val root = root ?: return
-        val anchor = anchors[id] ?: return
-        if (!root.isAttached || !anchor.isAttached) return
-        val center = runCatching {
-            root.localPositionOf(
-                anchor,
-                Offset(anchor.size.width / 2f, anchor.size.height / 2f),
-            )
-        }.getOrNull() ?: return
-        if (centers[id] != center) centers[id] = center
-    }
-}
-
-@Composable
-internal fun rememberChecklistHits(): ChecklistHitState = remember { ChecklistHitState() }
-
-@Composable
-internal fun Modifier.checklistHitTargets(
-    state: ChecklistHitState,
-    onToggle: (String) -> Unit,
-): Modifier {
-    val toggle = rememberUpdatedState(onToggle)
-    return this
-        .onGloballyPositioned(state::updateRoot)
-        .pointerInput(state) {
-            val tap = CheckTap.toPx()
-            awaitEachGesture {
-                val down = awaitFirstDown(pass = PointerEventPass.Initial)
-                val id = nearestChecklistTap(down.position.x, down.position.y, state.points(), tap)
-                    ?: return@awaitEachGesture
-                down.consume()
-                val up = waitForUpOrCancellation()
-                if (up != null) {
-                    up.consume()
-                    toggle.value(id)
-                }
-            }
-        }
-}
+private val CheckSize = 32.dp
 
 @Composable
 internal fun EditorBody(
@@ -186,7 +105,6 @@ internal fun EditorBody(
     mediaFile: (String) -> File,
     loadBitmap: (File) -> Bitmap?,
     focusRequesters: MutableMap<String, FocusRequester>,
-    checklistHits: ChecklistHitState,
     mediaMenuId: String?,
     captionEditing: Boolean,
     onFocus: (String) -> Unit,
@@ -224,13 +142,11 @@ internal fun EditorBody(
                     onRemoveEmpty = { onRemoveEmpty(block.id) },
                 )
                 is NoteBlock.Checklist -> ChecklistBlockField(
-                    id = block.id,
                     text = block.text,
                     done = block.done,
                     align = block.align,
                     font = block.font,
                     focusRequester = focusRequesters.getOrPut(block.id) { FocusRequester() },
-                    checklistHits = checklistHits,
                     onFocus = { onFocus(block.id) },
                     onTextChange = { onTextChange(block.id, it) },
                     onRemoveEmpty = { onRemoveEmpty(block.id) },
@@ -328,22 +244,17 @@ private fun TextBlockField(
 
 @Composable
 private fun ChecklistBlockField(
-    id: String,
     text: String,
     done: Boolean,
     align: ParagraphAlign,
     font: NoteFont,
     focusRequester: FocusRequester,
-    checklistHits: ChecklistHitState,
     onFocus: () -> Unit,
     onTextChange: (String) -> Unit,
     onRemoveEmpty: () -> Unit,
     onToggle: () -> Unit,
 ) {
     val line = with(LocalDensity.current) { BlockLineHeight.toDp() }
-    DisposableEffect(id) {
-        onDispose { checklistHits.remove(id) }
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -352,19 +263,18 @@ private fun ChecklistBlockField(
     ) {
         Box(
             modifier = Modifier
-                .size(width = CheckSize + 8.dp, height = line)
-                .onGloballyPositioned { checklistHits.updateAnchor(id, it) }
-                .semantics {
-                    contentDescription = if (done) "已完成" else "未完成"
-                    onClick {
-                        onToggle()
-                        true
-                    }
-                },
+                .size(CheckSize)
+                .semantics { contentDescription = if (done) "已完成" else "未完成" }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onToggle,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             ChecklistMark(done)
         }
+        Spacer(Modifier.width(12.dp))
         BasicTextField(
             value = text,
             onValueChange = onTextChange,
@@ -393,11 +303,11 @@ private fun ChecklistBlockField(
 @Composable
 private fun ChecklistMark(done: Boolean) {
     Canvas(Modifier.size(CheckSize)) {
-        val stroke = 1.7.dp.toPx()
+        val stroke = 2.dp.toPx()
         val inset = stroke / 2f
         val side = size.minDimension - inset * 2
         val topLeft = Offset(inset, inset)
-        val corner = CornerRadius(3.5.dp.toPx())
+        val corner = CornerRadius(6.dp.toPx())
         if (done) {
             drawRoundRect(
                 color = CheckGreen,
@@ -676,7 +586,7 @@ private fun androidx.compose.foundation.layout.RowScope.ActionLabel(
 private fun gapBetween(previous: NoteBlock, current: NoteBlock): androidx.compose.ui.unit.Dp {
     val sameText = previous is NoteBlock.Text && current is NoteBlock.Text
     val sameChecklist = previous is NoteBlock.Checklist && current is NoteBlock.Checklist
-    return if (sameText || sameChecklist) 0.dp else BlockGap
+    return if (sameText || sameChecklist) LineGap else BlockGap
 }
 
 private fun blockTextStyle(align: ParagraphAlign, font: NoteFont, done: Boolean): TextStyle {

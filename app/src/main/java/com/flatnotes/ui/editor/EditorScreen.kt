@@ -160,7 +160,6 @@ fun EditorScreen(
     val requesters = remember { mutableMapOf<String, FocusRequester>() }
     val titleFocus = remember { FocusRequester() }
     val scroll = rememberScrollState()
-    val checklistHits = rememberChecklistHits()
 
     LaunchedEffect(note.id) {
         if (note.title.isEmpty() && note.isTypingBlank()) {
@@ -254,9 +253,6 @@ fun EditorScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(scroll)
-                    .checklistHitTargets(checklistHits) { id ->
-                        onBlocksChange(toggleChecklist(note.blocks, id))
-                    }
                     .padding(horizontal = 20.dp, vertical = 18.dp),
             ) {
                 BasicTextField(
@@ -300,7 +296,6 @@ fun EditorScreen(
                     mediaFile = mediaFile,
                     loadBitmap = loadBitmap,
                     focusRequesters = requesters,
-                    checklistHits = checklistHits,
                     mediaMenuId = mediaMenuId,
                     captionEditing = captionEditing,
                     onFocus = { id ->
