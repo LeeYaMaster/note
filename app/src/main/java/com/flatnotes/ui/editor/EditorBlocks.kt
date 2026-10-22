@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,6 +38,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -48,7 +52,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -62,6 +69,8 @@ import androidx.compose.foundation.Canvas
 import com.flatnotes.data.NoteBlock
 import com.flatnotes.data.NoteFont
 import com.flatnotes.data.ParagraphAlign
+import com.flatnotes.domain.EditorSpacing
+import com.flatnotes.domain.blockGapDp
 import com.flatnotes.domain.mediaScaleSteps
 import com.flatnotes.ui.components.FlatText
 import com.flatnotes.ui.theme.FlatDimens
@@ -80,17 +89,22 @@ internal fun NoteFont.family(): FontFamily = when (this) {
 }
 
 internal fun NoteFont.label(): String = when (this) {
-    NoteFont.Default -> "默认"
-    NoteFont.Serif -> "衬线"
-    NoteFont.Monospace -> "等宽"
-    NoteFont.Handwriting -> "手写"
+    NoteFont.Default -> "系统默认"
+    NoteFont.Serif -> "宋体风格(衬线)"
+    NoteFont.Monospace -> "等宽代码"
+    NoteFont.Handwriting -> "手写体"
 }
 
+private val BlockFontSize = 16.sp
+private val BlockLineHeight = 24.sp
+private val CheckSize = 22.dp
+
 @Composable
-fun EditorBody(
+internal fun EditorBody(
     blocks: List<NoteBlock>,
     mediaFile: (String) -> File,
     loadBitmap: (File) -> Bitmap?,
+    spacing: EditorSpacing = EditorSpacing.Default,
     focusRequesters: MutableMap<String, FocusRequester>,
     mediaMenuId: String?,
     captionEditing: Boolean,
@@ -113,7 +127,11 @@ fun EditorBody(
         }
     }
     Column(Modifier.fillMaxWidth()) {
-        blocks.forEach { block ->
+        blocks.forEachIndexed { index, block ->
+            if (index > 0) {
+                val gap = blockGapDp(blocks[index - 1], block, spacing)
+                if (gap > 0) Spacer(Modifier.height(gap.dp))
+            }
             when (block) {
                 is NoteBlock.Text -> TextBlockField(
                     text = block.text,
@@ -137,6 +155,7 @@ fun EditorBody(
                     onToggle = { onToggle(block.id) },
                 )
                 is NoteBlock.Image -> MediaBlock(
+                    softFrame = false,
                     file = mediaFile(block.fileName),
                     scale = block.scale,
                     caption = block.caption,
@@ -152,6 +171,7 @@ fun EditorBody(
                     onDelete = { onRemoveMedia(block) },
                 )
                 is NoteBlock.Doodle -> MediaBlock(
+                    softFrame = true,
                     file = mediaFile(block.fileName),
                     scale = block.scale,
                     caption = block.caption,
@@ -197,7 +217,7 @@ private fun TextBlockField(
         onValueChange = onTextChange,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp)
+            .heightIn(min = with(LocalDensity.current) { BlockLineHeight.toDp() })
             .focusRequester(focusRequester)
             .onFocusChanged { if (it.isFocused) onFocus() }
             .onPreviewKeyEvent { event ->
@@ -216,7 +236,7 @@ private fun TextBlockField(
         decorationBox = { inner ->
             Box {
                 if (text.isEmpty() && placeholder != null) {
-                    FlatText(text = placeholder, color = FlatPalette.Placeholder, fontSize = 16.sp)
+                    FlatText(text = placeholder, color = FlatPalette.Placeholder, fontSize = BlockFontSize)
                 }
                 inner()
             }
@@ -236,15 +256,16 @@ private fun ChecklistBlockField(
     onRemoveEmpty: () -> Unit,
     onToggle: () -> Unit,
 ) {
+    val line = with(LocalDensity.current) { BlockLineHeight.toDp() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .heightIn(min = line),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(CheckSize)
                 .semantics { contentDescription = if (done) "已完成" else "未完成" }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -255,11 +276,13 @@ private fun ChecklistBlockField(
         ) {
             ChecklistMark(done)
         }
+        Spacer(Modifier.width(8.dp))
         BasicTextField(
             value = text,
             onValueChange = onTextChange,
             modifier = Modifier
                 .weight(1f)
+                .heightIn(min = line)
                 .focusRequester(focusRequester)
                 .onFocusChanged { if (it.isFocused) onFocus() }
                 .onPreviewKeyEvent { event ->
@@ -281,11 +304,19 @@ private fun ChecklistBlockField(
 
 @Composable
 private fun ChecklistMark(done: Boolean) {
-    Canvas(Modifier.size(22.dp)) {
-        val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
-        val radius = size.minDimension / 2f - 1.dp.toPx()
+    Canvas(Modifier.size(CheckSize)) {
+        val stroke = 1.7.dp.toPx()
+        val inset = stroke / 2f
+        val side = size.minDimension - inset * 2
+        val topLeft = Offset(inset, inset)
+        val corner = CornerRadius(4.dp.toPx())
         if (done) {
-            drawCircle(color = CheckGreen, radius = radius, center = center)
+            drawRoundRect(
+                color = CheckGreen,
+                topLeft = topLeft,
+                size = Size(side, side),
+                cornerRadius = corner,
+            )
             val path = Path().apply {
                 moveTo(size.width * 0.28f, size.height * 0.52f)
                 lineTo(size.width * 0.44f, size.height * 0.68f)
@@ -295,17 +326,18 @@ private fun ChecklistMark(done: Boolean) {
                 path,
                 Color.White,
                 style = Stroke(
-                    width = size.minDimension * 0.1f,
+                    width = size.minDimension * 0.12f,
                     cap = StrokeCap.Round,
                     join = StrokeJoin.Round,
                 ),
             )
         } else {
-            drawCircle(
+            drawRoundRect(
                 color = FlatPalette.IconMuted,
-                radius = radius,
-                center = center,
-                style = Stroke(width = 1.6.dp.toPx()),
+                topLeft = topLeft,
+                size = Size(side, side),
+                cornerRadius = corner,
+                style = Stroke(width = stroke),
             )
         }
     }
@@ -313,6 +345,7 @@ private fun ChecklistMark(done: Boolean) {
 
 @Composable
 private fun MediaBlock(
+    softFrame: Boolean,
     file: File,
     scale: Float,
     caption: String,
@@ -334,14 +367,15 @@ private fun MediaBlock(
         if (decoded == null) failed = true else bitmap = decoded
     }
     val fraction = scale.coerceIn(mediaScaleSteps.first(), mediaScaleSteps.last())
+    val alignStart = fraction < mediaScaleSteps.last() - 0.01f
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
             .zIndex(if (menuOpen) 1f else 0f),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = if (alignStart) Alignment.Start else Alignment.CenterHorizontally,
     ) {
         MediaFrame(
+            softFrame = softFrame,
             bitmap = bitmap,
             failed = failed,
             fraction = fraction,
@@ -349,6 +383,7 @@ private fun MediaBlock(
             caption = caption,
             menuOpen = menuOpen,
             captionEditing = captionEditing,
+            alignStart = alignStart,
             canEnlarge = fraction < mediaScaleSteps.last() - 0.01f,
             canShrink = fraction > mediaScaleSteps.first() + 0.01f,
             onToggleMenu = onToggleMenu,
@@ -363,12 +398,12 @@ private fun MediaBlock(
                 text = caption,
                 modifier = Modifier
                     .fillMaxWidth(fraction)
-                    .padding(top = 6.dp),
+                    .padding(top = 8.dp),
                 style = TextStyle(
                     color = FlatPalette.TextSecondary,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    textAlign = TextAlign.Center,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    textAlign = if (alignStart) TextAlign.Start else TextAlign.Center,
                 ),
             )
         }
@@ -377,6 +412,7 @@ private fun MediaBlock(
 
 @Composable
 private fun MediaFrame(
+    softFrame: Boolean,
     bitmap: Bitmap?,
     failed: Boolean,
     fraction: Float,
@@ -384,6 +420,7 @@ private fun MediaFrame(
     caption: String,
     menuOpen: Boolean,
     captionEditing: Boolean,
+    alignStart: Boolean,
     canEnlarge: Boolean,
     canShrink: Boolean,
     onToggleMenu: () -> Unit,
@@ -393,21 +430,26 @@ private fun MediaFrame(
     onCaptionEdit: () -> Unit,
     onCaptionChange: (String) -> Unit,
 ) {
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center,
-    ) {
+    Box(Modifier.fillMaxWidth()) {
         val shape = RoundedCornerShape(FlatDimens.Radius)
         val frame = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .border(1.dp, FlatPalette.Divider, shape)
+            .border(
+                width = 1.dp,
+                color = if (softFrame) FlatPalette.Divider.copy(alpha = 0.45f) else FlatPalette.Divider,
+                shape = shape,
+            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onToggleMenu,
             )
-        Box(Modifier.fillMaxWidth(fraction)) {
+        Box(
+            Modifier
+                .align(if (alignStart) Alignment.CenterStart else Alignment.Center)
+                .fillMaxWidth(fraction),
+        ) {
             when {
                 bitmap != null -> Image(
                     bitmap = bitmap.asImageBitmap(),
@@ -423,12 +465,14 @@ private fun MediaFrame(
                 }
                 else -> Box(frame.height(140.dp))
             }
-        }
-        AnimatedVisibility(
-            visible = menuOpen,
-            enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.86f, animationSpec = tween(180)),
-            exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.86f, animationSpec = tween(120)),
-        ) {
+            AnimatedVisibility(
+                visible = menuOpen,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .wrapContentSize(Alignment.Center, unbounded = true),
+                enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.86f, animationSpec = tween(180)),
+                exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.86f, animationSpec = tween(120)),
+            ) {
             MediaActions(
                 kindLabel = kindLabel,
                 caption = caption,
@@ -441,6 +485,7 @@ private fun MediaFrame(
                 onCaptionEdit = onCaptionEdit,
                 onCaptionChange = onCaptionChange,
             )
+            }
         }
     }
 }
@@ -543,9 +588,10 @@ private fun androidx.compose.foundation.layout.RowScope.ActionLabel(
 private fun blockTextStyle(align: ParagraphAlign, font: NoteFont, done: Boolean): TextStyle {
     return TextStyle(
         color = if (done) FlatPalette.TextSecondary else FlatPalette.TextPrimary,
-        fontSize = 16.sp,
+        fontSize = BlockFontSize,
         fontFamily = font.family(),
-        lineHeight = 24.sp,
+        lineHeight = BlockLineHeight,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
         textAlign = when (align) {
             ParagraphAlign.Start -> TextAlign.Start
             ParagraphAlign.Center -> TextAlign.Center
